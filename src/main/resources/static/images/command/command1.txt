@@ -1,0 +1,2 @@
+cd /home/nvidia/software/nx_k8s
+bash start_changeOS.sh
