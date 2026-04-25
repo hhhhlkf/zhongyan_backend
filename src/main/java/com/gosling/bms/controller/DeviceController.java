@@ -52,6 +52,7 @@ public class DeviceController {
 //        generateRandomNumbers(status);
         Map<String, Object> map = new HashMap<>();
         map.put("status", status);
+        log.info("Device status: {}", status);
         return map;
     }
 

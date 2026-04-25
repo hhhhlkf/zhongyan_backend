@@ -3,6 +3,7 @@ package com.gosling.bms.service.impl;
 import com.gosling.bms.conf.CameraConfig;
 import com.gosling.bms.exception.BaseException;
 import com.gosling.bms.service.DeviceService;
+import com.gosling.bms.service.SonyCameraService;
 import com.jcraft.jsch.JSch;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -13,53 +14,50 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
 public class DeviceServiceImpl implements DeviceService {
+    private static final int DEFAULT_PING_TIMEOUT_MS = 1500;
+    private static final int DEFAULT_SSH_TIMEOUT_MS = 3000;
 
     private final CameraConfig cameraConfig;
+    private final SonyCameraService sonyCameraService;
 
-    public DeviceServiceImpl(CameraConfig cameraConfig) {
+    public DeviceServiceImpl(CameraConfig cameraConfig, SonyCameraService sonyCameraService) {
         this.cameraConfig = cameraConfig;
+        this.sonyCameraService = sonyCameraService;
     }
-
 
     @Override
     public Map<String, Float> getDeviceStatus() {
-        // 这里可以实现获取设备状态的逻辑
         HashMap<String, Float> statusMap = new HashMap<>();
         List<CameraConfig.CameraInfo> cameraList = cameraConfig.getCameras();
         if (cameraList == null || cameraList.isEmpty()) {
             throw new BaseException("No cameras configured.");
         }
+
         for (int i = 0; i < cameraList.size(); i++) {
             CameraConfig.CameraInfo camera = cameraList.get(i);
-            // 假设每个板卡都有一个获取状态的方法
-            // 这里可以调用实际的API或执行命令来获取板卡状态
             log.info("Checking status for camera: {}", camera.getHost());
             String command = "free | awk '/Mem:/ {printf(\"%.4f\", $3/$2)}'";
-            // 这里可以使用JSch或其他方式执行命令
             JSch jsch = new JSch();
 
-
-            try{
-                // 创建SSH会话
+            try {
                 var session = jsch.getSession(camera.getUsername(), camera.getHost(), 22);
                 session.setPassword(camera.getPassword());
                 session.setConfig("StrictHostKeyChecking", "no");
                 session.connect();
 
-                // 执行命令
                 var channel = session.openChannel("exec");
                 ((com.jcraft.jsch.ChannelExec) channel).setCommand(command);
                 channel.setInputStream(null);
                 var in = channel.getInputStream();
                 channel.connect();
 
-                // 读取输出
                 StringBuilder output = new StringBuilder();
                 byte[] buffer = new byte[1024];
                 int read;
@@ -71,114 +69,154 @@ public class DeviceServiceImpl implements DeviceService {
                     throw new BaseException("No output received from camera: " + camera.getHost());
                 }
 
-                // 处理输出结果
                 log.info("Output: {}", output.toString().trim());
-
-                // 加入到状态映射中
                 statusMap.put("nx_" + (i + 1), Float.parseFloat(output.toString().trim()));
 
-                // 断开连接
                 channel.disconnect();
                 session.disconnect();
             } catch (Exception e) {
                 throw new BaseException("Error checking camera status: " + camera.getHost(), e);
             }
-
-            // 模拟返回状态
         }
-
 
         return statusMap;
     }
 
-   // 通过 SSH 执行远程命令并返回输出结果
-   public String execCommand(String host, String username, String password, String command) {
-       JSch jsch = new JSch();
-       try {
-           // 创建 SSH 会话
-           var session = jsch.getSession(username, host, 22);
-           session.setPassword(password);
-           // 跳过主机密钥检查
-           session.setConfig("StrictHostKeyChecking", "no");
-           session.connect();
+    public String execCommand(String host, String username, String password, String command, Integer timeoutMs) {
+        JSch jsch = new JSch();
+        int connectTimeoutMs = timeoutMs != null && timeoutMs > 0 ? timeoutMs : DEFAULT_SSH_TIMEOUT_MS;
+        try {
+            var session = jsch.getSession(username, host, 22);
+            session.setPassword(password);
+            session.setConfig("StrictHostKeyChecking", "no");
+            session.connect(connectTimeoutMs);
 
-           // 打开 exec 通道用于执行命令
-           var channel = session.openChannel("exec");
-           ((com.jcraft.jsch.ChannelExec) channel).setCommand(command);
-           channel.setInputStream(null);
-           var in = channel.getInputStream();
-           channel.connect();
+            var channel = (com.jcraft.jsch.ChannelExec) session.openChannel("exec");
+            channel.setCommand(command);
+            channel.setInputStream(null);
+            var in = channel.getInputStream();
+            channel.connect(connectTimeoutMs);
 
-           // 读取命令执行结果
-           StringBuilder output = new StringBuilder();
-           byte[] buffer = new byte[1024];
-           int read;
-           while ((read = in.read(buffer)) != -1) {
-               output.append(new String(buffer, 0, read));
-           }
+            StringBuilder output = new StringBuilder();
+            byte[] buffer = new byte[1024];
+            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(connectTimeoutMs);
+            while (true) {
+                while (in.available() > 0) {
+                    int read = in.read(buffer);
+                    if (read < 0) {
+                        break;
+                    }
+                    output.append(new String(buffer, 0, read));
+                }
+                if (channel.isClosed()) {
+                    while (in.available() > 0) {
+                        int read = in.read(buffer);
+                        if (read < 0) {
+                            break;
+                        }
+                        output.append(new String(buffer, 0, read));
+                    }
+                    break;
+                }
+                if (System.nanoTime() >= deadline) {
+                    throw new BaseException("Command timeout for host: " + host);
+                }
+                Thread.sleep(50);
+            }
 
-           // 断开通道和会话
-           channel.disconnect();
-           session.disconnect();
-
-           // 返回命令输出
-           return output.toString().trim();
-       } catch (Exception e) {
-           // 捕获异常并抛出自定义异常
-           throw new BaseException("Error executing command: " + e.getMessage(), e);
-       }
-   }
+            channel.disconnect();
+            session.disconnect();
+            return output.toString().trim();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BaseException("Command interrupted: " + host, e);
+        } catch (Exception e) {
+            throw new BaseException("Error executing command: " + e.getMessage(), e);
+        }
+    }
 
     @Override
     public ArrayList<Integer> getDeviceStatus(ArrayList<String> deviceList) {
         if (deviceList == null || deviceList.isEmpty()) {
             throw new BaseException("Device list cannot be null or empty.");
         }
-        // 'nx', 'trans', 'llt', 'rgb', 'hsi'
-        ArrayList<Integer> statusList = new ArrayList<>();
-        for(String device : deviceList) {
-            if(device.equalsIgnoreCase("nx")) {
-                // 这里可以实现获取NX设备状态的逻辑
-                Boolean isNXAvailable = true;
-                for(CameraConfig.CameraInfo camera : cameraConfig.getCameras()) {
-                    // 假设每个摄像头都有一个获取状态的方法
-                    // 这里可以调用实际的API或执行命令来获取摄像头状态
-                    log.info("Checking status for camera: {}", camera.getHost());
-                    try {
-                        boolean reachable = InetAddress.getByName(camera.getHost()).isReachable(3000);
-                    } catch (IOException e) {
-                        isNXAvailable = false;
-                        log.info("Camera {} is not reachable.", camera.getHost());
-                        statusList.add(1); // 添加不可用状态
-                    }
-                }
-                if (isNXAvailable) {
-                    statusList.add(0); // 添加可用状态
-                }
-            }else if (device.equalsIgnoreCase("trans")) {
-                statusList.add(CameraConfig.transStatus);
-            } else {
-                // 摄像头类型处理逻辑
-                for (CameraConfig.CameraInfo camera : cameraConfig.getCameras()) {
-                    if (camera.getType().equalsIgnoreCase(device)) {
-                        String command = camera.getCheckCommand();
-                        try {
-                            String output = execCommand(camera.getHost(), "nvidia", "nvidia", command);
-                            log.info("Output for camera {}: {}", camera.getType(), output);
-                            if (output.contains("available")) {
-                                statusList.add(0); // 摄像头可用
-                            } else {
-                                statusList.add(1); // 摄像头不可用
-                            }
-                        } catch (BaseException e) {
-                            log.info("Error checking camera {}: {}", camera.getType(), e.getMessage());
-                            statusList.add(1); // 摄像头不可用
-                        }
-                    }
-                }
-            }
+        log.info("Received device list: {}", deviceList);
+        List<CameraConfig.CameraInfo> cameras = cameraConfig.getCameras();
+        Map<String, CameraConfig.CameraInfo> cameraByType = cameras == null ? new HashMap<>() : cameras.stream()
+                .collect(Collectors.toMap(camera -> camera.getType().toLowerCase(), camera -> camera, (left, right) -> left));
+
+        List<CompletableFuture<Integer>> futures = deviceList.stream()
+                .map(device -> CompletableFuture.supplyAsync(() -> getSingleDeviceStatus(device, cameras, cameraByType)))
+                .collect(Collectors.toList());
+
+        ArrayList<Integer> statusList = futures.stream()
+                .map(CompletableFuture::join)
+                .collect(Collectors.toCollection(ArrayList::new));
+        log.info("Device status list: {}", statusList);
+        return statusList;
+    }
+
+    private Integer getSingleDeviceStatus(String device,
+                                          List<CameraConfig.CameraInfo> cameras,
+                                          Map<String, CameraConfig.CameraInfo> cameraByType) {
+        if (device.equalsIgnoreCase("nx")) {
+            return checkNxStatus(cameras);
+        }
+        if (device.equalsIgnoreCase("trans")) {
+            return CameraConfig.transStatus;
+        }
+        if (device.equalsIgnoreCase("rgb")) {
+            return checkRgbCameraStatus();
         }
 
-        return statusList;
+        CameraConfig.CameraInfo camera = cameraByType.get(device.toLowerCase());
+        if (camera == null) {
+            log.info("No camera config found for device {}", device);
+            return 1;
+        }
+
+        String command = camera.getCheckCommand();
+        try {
+            String output = execCommand(
+                    camera.getHost(),
+                    camera.getUsername(),
+                    camera.getPassword(),
+                    command,
+                    camera.getCommandTimeoutMs()
+            );
+            log.info("Output for camera {}: {}", camera.getType(), output);
+            return output.contains("available") ? 0 : 1;
+        } catch (BaseException e) {
+            log.info("Error checking camera {}: {}", camera.getType(), e.getMessage());
+            return 1;
+        }
+    }
+
+    private Integer checkNxStatus(List<CameraConfig.CameraInfo> cameras) {
+        if (cameras == null || cameras.isEmpty()) {
+            return 1;
+        }
+        boolean allReachable = cameras.parallelStream().allMatch(this::isCameraReachable);
+        return allReachable ? 0 : 1;
+    }
+
+    private boolean isCameraReachable(CameraConfig.CameraInfo camera) {
+        log.info("Checking status for camera: {}", camera.getHost());
+        try {
+            return InetAddress.getByName(camera.getHost()).isReachable(DEFAULT_PING_TIMEOUT_MS);
+        } catch (IOException e) {
+            log.info("Camera {} check failed.", camera.getHost(), e);
+            return false;
+        }
+    }
+
+    private Integer checkRgbCameraStatus() {
+        try {
+            sonyCameraService.getStatus(null);
+            return 0;
+        } catch (BaseException e) {
+            log.info("RGB camera check failed: {}", e.getMessage());
+            return 1;
+        }
     }
 }

@@ -138,6 +138,10 @@ server-param:
       check-command: python /home/nvidia/zhongyan/model/Camera/test_camera.py
       start-command: bash /home/nvidia/zhongyan/model/Camera/rgb_srcipt.sh 1
       stop-command: bash /home/nvidia/zhongyan/model/Camera/rgb_srcipt.sh 0
+      controller-script: /home/nvidia/zhongyan/model/Camera/camera_controller.py
+      python-command: python3
+      default-mac: 9C:69:D3:6C:D2:4D
+      command-timeout-ms: 30000
       start-process: bash /home/nvidia/zhongyan/model/process_script.sh 1 rgb
       stop-process: bash /home/nvidia/zhongyan/model/process_script.sh 0 rgb
     - host: 192.168.1.102
@@ -146,7 +150,7 @@ server-param:
       type: hsi
       check-command: python /home/nvidia/zhongyan/model/Camera/test_camera.py
       start-command: bash /home/nvidia/zhongyan/model/Camera/hsi_script.sh 1
-      stop-command: bash /home/nvidia/zhongyan/model/Camera/rgb_srcipt.sh 0
+      stop-command: bash /home/nvidia/zhongyan/model/Camera/hsi_srcipt.sh 0
       start-process: bash /home/nvidia/zhongyan/model/process_script.sh 1 hsi
       stop-process: bash /home/nvidia/zhongyan/model/process_script.sh 0 hsi
     - host: 192.168.1.103
@@ -171,6 +175,17 @@ server-param:
 resource:
   base-path: ./src/main/resources/static/images/res
   web-path: :8088/v2/static/res
+  coordinate:
+    ground-elevation-meters: 0
+    online-ground-elevation-enabled: true
+    elevation-api-url: https://api.open-meteo.com/v1/elevation
+    elevation-connect-timeout-ms: 2000
+    elevation-read-timeout-ms: 3000
+    elevation-cache-ttl-seconds: 86400
+    horizontal-fov-deg: 23.5
+    vertical-fov-deg: 16.6
+    use-yaw: true
+    max-match-seconds: 5
   receive:
     - type: llt
       path: llt
@@ -181,4 +196,21 @@ resource:
   collect: collect
   process: process
   history: history
+  time: time
+  preview:
+    enabled: true
+    collect:
+      long-edge: 1280
+      target-size-kb: 100
+      min-quality: 0.65
+      retain-count: 100
+    process:
+      long-edge: 1600
+      target-size-kb: 150
+      min-quality: 0.75
+      retain-count: 100
+
+udp-data:
+  max-records: 3600
+  trim-interval-ms: 60000
 

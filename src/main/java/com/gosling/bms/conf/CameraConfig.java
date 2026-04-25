@@ -29,6 +29,10 @@ public class CameraConfig {
         private String checkCommand;
         private String startCommand;
         private String stopCommand;
+        private String controllerScript;
+        private String pythonCommand;
+        private String defaultMac;
+        private Integer commandTimeoutMs;
 
         private String startProcess;
         private String stopProcess;

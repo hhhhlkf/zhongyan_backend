@@ -1,6 +1,7 @@
 package com.gosling.bms.service;
 
 import com.gosling.bms.dao.entity.FileData;
+import com.gosling.bms.response.PageResponse;
 
 import java.util.List;
 
@@ -15,6 +16,16 @@ public interface DataManagerService {
      * @return 文件列表
      */
     List<FileData> getFileList(String type, String task);
+
+    PageResponse<FileData> getHistoryPage(String type, int page, int pageSize);
+
+    PageResponse<FileData> getRecentPage(String type, String task, int page, int pageSize, Long snapshotTime);
+
+    DeleteItemsResult deleteItems(String type, String task, List<String> names);
+
+    DeleteItemsResult deleteAllItems(String type, String task);
+
+    Boolean deleteHistoryFile(String type, String name);
 
     /**
      * 获取文件列表

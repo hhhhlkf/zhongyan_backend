@@ -3,6 +3,7 @@ package com.gosling.bms.controller;
 import com.gosling.bms.dao.entity.file;
 import com.gosling.bms.exception.BaseException;
 import com.gosling.bms.response.ResponseResult;
+import com.gosling.bms.utils.PolyCoordinateUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
@@ -17,7 +18,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
 
 import static com.gosling.bms.utils.FileUtils.*;
 
@@ -48,13 +48,9 @@ public class EmergencyController {
         if (!Files.exists(poly)) {
             throw new BaseException(" 坐标文件不存在");
         }
-        List<String> polyList = Files.readAllLines(poly);
-        Float[] floats = polyList.stream()
-                .flatMap(item -> {
-                    String[] parts = item.split(" ");
-                    return Stream.of(Float.parseFloat(parts[0]), Float.parseFloat(parts[1]));
-                })
-                .toArray(Float[]::new);
+        Float[] floats = PolyCoordinateUtils.toLeftTopRightBottomFloatArray(
+                PolyCoordinateUtils.readPoints(poly.toFile())
+        );
         file file = setFile(name, attr, emergencyPath, p, floats);
         fileList.add(file);
         // 将文件转移到emergencyPath下

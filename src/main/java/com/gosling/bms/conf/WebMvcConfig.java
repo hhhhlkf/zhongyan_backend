@@ -31,7 +31,6 @@ public class WebMvcConfig extends WebMvcConfigurerAdapter {
         p = p.replace('\\', '/');
         log.info(p);
         registry.addResourceHandler("/static/**")//前端url访问的路径，若有访问前缀，在访问时添加即可，这里不需添加。
-                .addResourceLocations("file:/D:/zhongyan/backend/src/main/resources/static/images/");//文件存储的真实路径
+                .addResourceLocations("file:/D:/code/zhongyan/zhongyan_backend/src/main/resources/static/images/");//文件存储的真实路径
     }
 }
-

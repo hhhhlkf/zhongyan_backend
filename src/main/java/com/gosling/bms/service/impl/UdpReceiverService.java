@@ -1,17 +1,20 @@
 package com.gosling.bms.service.impl;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.gosling.bms.utils.UdpDataFileStore;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
-import java.io.File;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @Slf4j
@@ -20,51 +23,59 @@ public class UdpReceiverService implements Runnable {
     private volatile boolean running = true;
     private Thread thread;
     private DatagramSocket socket;
+    private ScheduledExecutorService cleanupExecutor;
 
-    private static final String FILE_PATH = "src/main/resources/static/udp_data.json";
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    @Value("${udp-data.max-records:3600}")
+    private int maxRecords;
+
+    @Value("${udp-data.trim-interval-ms:60000}")
+    private long trimIntervalMs;
+
+    @Value("${udp-data.listen-port:6308}")
+    private int listenPort;
+
+    @Value("${udp-data.file-path:src/main/resources/static/udp_data.json}")
+    private String udpDataFilePath;
+
+    private Path getUdpDataPath() {
+        return Paths.get(udpDataFilePath);
+    }
 
     private synchronized void appendDataToJsonFile(String data) {
-        File file = new File(FILE_PATH);
-        ArrayNode arrayNode;
         try {
-            if (file.exists() && file.length() > 0) {
-                arrayNode = (ArrayNode) objectMapper.readTree(file);
-            } else {
-                arrayNode = objectMapper.createArrayNode();
-            }
-            JsonNode newNode = objectMapper.readTree(data);
-            arrayNode.add(newNode);
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(file, arrayNode);
+            UdpDataFileStore.append(getUdpDataPath(), data, maxRecords);
         } catch (IOException e) {
-            log.error("写入JSON文件失败", e);
+            log.error("Failed to write udp_data.json", e);
         }
     }
 
     @PostConstruct
     public void start() {
-        // 启动前只保留 udp_data.json 最新三条数据
         try {
-            File file = new File(FILE_PATH);
-            if (file.exists() && file.length() > 0) {
-                ArrayNode arrayNode = (ArrayNode) objectMapper.readTree(file);
-                if (arrayNode.size() > 3) {
-                    ArrayNode lastThree = objectMapper.createArrayNode();
-                    for (int i = arrayNode.size() - 3; i < arrayNode.size(); i++) {
-                        lastThree.add(arrayNode.get(i));
-                    }
-                    objectMapper.writerWithDefaultPrettyPrinter().writeValue(file, lastThree);
-                    log.info("已保留 udp_data.json 最新三条数据");
-                }
-            }
+            UdpDataFileStore.trimToLatest(getUdpDataPath(), maxRecords);
         } catch (IOException e) {
-            log.error("处理 udp_data.json 文件失败", e);
+            log.error("Failed to trim udp_data.json on startup", e);
         }
 
-        log.info("UDP接收服务启动");
+        startCleanupTask();
+        log.info("UDP receiver service started, port={}, file={}", listenPort, getUdpDataPath());
         thread = new Thread(this, "UdpReceiverThread");
         thread.start();
+    }
 
+    private void startCleanupTask() {
+        cleanupExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread cleanupThread = new Thread(r, "UdpDataCleanupThread");
+            cleanupThread.setDaemon(true);
+            return cleanupThread;
+        });
+        cleanupExecutor.scheduleWithFixedDelay(() -> {
+            try {
+                UdpDataFileStore.trimToLatest(getUdpDataPath(), maxRecords);
+            } catch (IOException e) {
+                log.error("Failed to trim udp_data.json", e);
+            }
+        }, trimIntervalMs, trimIntervalMs, TimeUnit.MILLISECONDS);
     }
 
     @PreDestroy
@@ -73,26 +84,27 @@ public class UdpReceiverService implements Runnable {
         if (socket != null && !socket.isClosed()) {
             socket.close();
         }
+        if (cleanupExecutor != null) {
+            cleanupExecutor.shutdownNow();
+        }
     }
 
     @Override
     public void run() {
         log.info("UdpReceiverService run() started");
         try {
-            socket = new DatagramSocket(2010); // 监听9000端口
+            socket = new DatagramSocket(listenPort);
             byte[] buffer = new byte[4096];
             while (running) {
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                 socket.receive(packet);
-                // 处理接收到的数据
                 String data = new String(packet.getData(), 0, packet.getLength());
-                log.info("收到UDP数据: {}", data);
+                log.info("Received UDP data: {}", data);
                 appendDataToJsonFile(data);
-                // 可将数据保存为文件或进一步处理
             }
         } catch (Exception e) {
             if (running) {
-                log.error("UDP接收异常", e);
+                log.error("UDP receiver failed", e);
             }
         } finally {
             if (socket != null && !socket.isClosed()) {

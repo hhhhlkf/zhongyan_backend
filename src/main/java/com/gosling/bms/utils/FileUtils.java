@@ -192,6 +192,8 @@ public class FileUtils {
         String targetFolder = basePath + File.separator + paths[0] + "_sim";
         File targetDir = new File(targetFolder);
 
+        System.out.println("目标文件夹路径: " + targetFolder);
+
         if (!targetDir.exists()) {
             targetDir.mkdirs();
         }

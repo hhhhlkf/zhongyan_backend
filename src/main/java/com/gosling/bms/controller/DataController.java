@@ -1,20 +1,24 @@
 package com.gosling.bms.controller;
 
+import com.gosling.bms.controller.request.DeleteDataItemsRequest;
 import com.gosling.bms.dao.entity.FileData;
 import com.gosling.bms.exception.BaseException;
+import com.gosling.bms.response.PageResponse;
 import com.gosling.bms.response.ResponseResult;
 import com.gosling.bms.service.CameraService;
 import com.gosling.bms.service.DataManagerService;
+import com.gosling.bms.service.DeleteItemsResult;
 import com.gosling.bms.service.MethodService;
 import com.gosling.bms.service.TransferService;
+import com.gosling.bms.service.SonyCameraService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -33,6 +37,9 @@ public class DataController {
 
     @Autowired
     private TransferService transferService;
+
+    @Autowired
+    private SonyCameraService sonyCameraService;
 
     /**
      * 控制摄像头的开关和速度
@@ -117,6 +124,72 @@ public class DataController {
         return Map.of("status", true);
     }
 
+    @ResponseResult
+    @GetMapping("/camera/rgb/timelapse/runtime")
+    public Map<String, Object> getRgbTimelapseRuntime(@RequestParam(required = false) String mac) {
+        log.info("Received Sony RGB timelapse runtime request, mac={}", mac);
+        return sonyCameraService.getTimelapseRuntime(mac);
+    }
+
+    @ResponseResult
+    @GetMapping("/camera/rgb/stop")
+    public Map<String, Object> stopRgbCamera(@RequestParam(required = false) String mac) {
+        log.info("Received Sony RGB camera stop request, mac={}", mac);
+        return sonyCameraService.stop(mac);
+    }
+
+    @ResponseResult
+    @GetMapping("/camera/rgb/timelapse/forever")
+    public Map<String, Object> startRgbTimelapseForever(@RequestParam Integer interval,
+                                                        @RequestParam(required = false) String mac) {
+        if (interval == null || interval <= 0) {
+            throw new BaseException("interval must be greater than 0");
+        }
+        log.info("Received Sony RGB timelapse forever request, interval={}, mac={}", interval, mac);
+        return sonyCameraService.startTimelapseForever(interval, mac);
+    }
+
+    @ResponseResult
+    @GetMapping("/camera/rgb/timelapse")
+    public Map<String, Object> startRgbTimelapse(@RequestParam Integer interval,
+                                                 @RequestParam Integer count,
+                                                 @RequestParam(required = false) String mac) {
+        if (interval == null || interval <= 0) {
+            throw new BaseException("interval must be greater than 0");
+        }
+        if (count == null || count <= 0) {
+            throw new BaseException("count must be greater than 0");
+        }
+        log.info("Received Sony RGB timelapse count request, interval={}, count={}, mac={}", interval, count, mac);
+        return sonyCameraService.startTimelapse(interval, count, mac);
+    }
+
+    @ResponseResult
+    @GetMapping("/camera/rgb/timelapse/forever/restart")
+    public Map<String, Object> restartRgbTimelapseForever(@RequestParam Integer interval,
+                                                          @RequestParam(required = false) String mac) {
+        if (interval == null || interval <= 3) {
+            throw new BaseException("interval must be greater than 3");
+        }
+        log.info("Received Sony RGB timelapse forever restart request, interval={}, mac={}", interval, mac);
+        return sonyCameraService.restartTimelapseForever(interval, mac);
+    }
+
+    @ResponseResult
+    @GetMapping("/camera/rgb/timelapse/restart")
+    public Map<String, Object> restartRgbTimelapse(@RequestParam Integer interval,
+                                                   @RequestParam Integer count,
+                                                   @RequestParam(required = false) String mac) {
+        if (interval == null || interval <= 3) {
+            throw new BaseException("interval must be greater than 3");
+        }
+        if (count == null || count <= 3) {
+            throw new BaseException("count must be greater than 3");
+        }
+        log.info("Received Sony RGB timelapse restart request, interval={}, count={}, mac={}", interval, count, mac);
+        return sonyCameraService.restartTimelapse(interval, count, mac);
+    }
+
     /**
      * 获取各模态数据历史记录
      *
@@ -125,13 +198,12 @@ public class DataController {
      */
     @ResponseResult
     @GetMapping("/data/history")
-    public Map<String, Object> getHistoryList(@RequestParam String type) {
-        List<FileData> fileList = dataManagerService.getFileList(type, "history");
-        if (fileList.isEmpty()) {
-            System.out.println("No history files found for type: " + type);
-            return Map.of("fileList", new ArrayList<>());
+    public PageResponse<FileData> getHistoryList(@RequestParam String type,
+                                                 @RequestParam(defaultValue = "1") Integer page) {
+        if (page == null || page < 1) {
+            throw new BaseException("page must be greater than or equal to 1");
         }
-        return Map.of("fileList", fileList);
+        return dataManagerService.getHistoryPage(type, page, 5);
     }
 
 
@@ -150,6 +222,35 @@ public class DataController {
             log.warn("Failed to transfer data for modal: {}, task: {}", modal, task);
         }
         return Map.of("status", b);
+    }
+
+    @ResponseResult
+    @DeleteMapping("/data/items")
+    public DeleteItemsResult deleteDataItems(@RequestBody DeleteDataItemsRequest request) {
+        if (request == null) {
+            throw new BaseException("request body must not be null");
+        }
+        return dataManagerService.deleteItems(request.getType(), request.getTask(), request.getNames());
+    }
+
+    @ResponseResult
+    @DeleteMapping("/data/items/all")
+    public DeleteItemsResult deleteAllDataItems(@RequestBody DeleteDataItemsRequest request) {
+        if (request == null) {
+            throw new BaseException("request body must not be null");
+        }
+        return dataManagerService.deleteAllItems(request.getType(), request.getTask());
+    }
+
+    @ResponseResult
+    @GetMapping("/data/history/delete")
+    public Map<String, Object> deleteHistoryData(@RequestParam String type,
+                                                 @RequestParam String name) {
+        Boolean deleted = dataManagerService.deleteHistoryFile(type, name);
+        if (!deleted) {
+            log.warn("History file not found for deletion: type={}, name={}", type, name);
+        }
+        return Map.of("status", deleted);
     }
 
     /**
@@ -191,13 +292,14 @@ public class DataController {
 
     @ResponseResult
     @GetMapping("/data/recent")
-    public List<FileData> getRecentData(@RequestParam String type, @RequestParam String task){
-        List<FileData> fileList = dataManagerService.getFileList(type, task);
-        if (fileList.isEmpty()) {
-            log.warn("No recent data files found for type: {}, task: {}", type, task);
-            return new ArrayList<>();
+    public PageResponse<FileData> getRecentData(@RequestParam String type,
+                                                @RequestParam String task,
+                                                @RequestParam(defaultValue = "1") Integer page,
+                                                @RequestParam(required = false) Long snapshotTime){
+        if (page == null || page < 1) {
+            throw new BaseException("page must be greater than or equal to 1");
         }
-        return fileList;
+        return dataManagerService.getRecentPage(type, task, page, 10, null);
     }
 
 
