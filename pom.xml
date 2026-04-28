@@ -8,11 +8,11 @@
         <version>2.7.5</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
-    <groupId>com.gosling</groupId>
-    <artifactId>bms</artifactId>
+    <groupId>com.zhongyan</groupId>
+    <artifactId>zhongyan-uav-backend</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>bms</name>
-    <description>business management system backend</description>
+    <name>zhongyan-uav-backend</name>
+    <description>Zhongyan UAV remote sensing emergency platform backend</description>
     <properties>
         <java.version>11</java.version>
     </properties>

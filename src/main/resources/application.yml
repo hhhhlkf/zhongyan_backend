@@ -125,9 +125,9 @@ jwt:
 #      # 设置全局表名前缀
 #      # table-prefix: sys_
 #  # 配置类型别名对应的包
-#  type-aliases-package: com.gosling.bms.dao.entity
+#  type-aliases-package: com.zhongyan.uav
 #  # 配置通用枚举路径
-#  type-enums-package: com.gosling.bms.utils.enums
+#  type-enums-package: com.zhongyan.uav.common
 
 server-param:
   cameras:
