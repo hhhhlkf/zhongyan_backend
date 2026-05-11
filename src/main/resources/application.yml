@@ -2,10 +2,12 @@ server:
   port: 8088
   servlet:
     context-path: /v2
-  error:
-    include-stacktrace: never
 
 spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
+      - org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration
   mvc:
     static-path-pattern: /**
     pathmatch:
@@ -15,6 +17,10 @@ spring:
       enabled: true
     livereload:
       enabled: true
+  data:
+    redis:
+      repositories:
+        enabled: false
   security:
     user:
       name: admin
@@ -22,13 +28,8 @@ spring:
   jackson:
     serialization:
       FAIL_ON_EMPTY_BEANS: false
-      write_dates_as_timestamps: false
     time-zone: GMT+08:00
     date-format: yyyy-MM-dd HH:mm:ss
-
-  autoconfigure:
-    exclude: org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
-
 #  datasource:
 #    username: xxxx
 #    password: xxxx
@@ -89,6 +90,8 @@ spring:
         period: 0
       chain:
         cache: false
+    error:
+      include-stacktrace: never
 
 #  jpa:
 #    hibernate:
@@ -213,4 +216,10 @@ resource:
 udp-data:
   max-records: 3600
   trim-interval-ms: 60000
+
+bms:
+  device:
+    mode: mock
+  repository:
+    mode: mock
 

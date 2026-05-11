@@ -1,0 +1,23 @@
+spring:
+  config:
+    activate:
+      on-profile: test
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
+      - org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration
+  devtools:
+    restart:
+      enabled: false
+    livereload:
+      enabled: false
+  flyway:
+    enabled: false
+
+bms:
+  repository:
+    mode: mock
+  device-mode: mock
+  asset:
+    storage:
+      enabled: false

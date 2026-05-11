@@ -29,3 +29,6 @@ pnpm-debug.log*
 
 # Local History for Visual Studio Code
 .history/
+
+
+src/main/resources/static/*

@@ -1,0 +1,59 @@
+spring:
+  config:
+    activate:
+      on-profile: local
+  autoconfigure:
+    exclude: []
+  datasource:
+    url: ${BMS_DB_URL:jdbc:postgresql://localhost:5432/zhongyan_uav}
+    username: ${BMS_DB_USERNAME:zhongyan}
+    password: ${BMS_DB_PASSWORD:zhongyan_local}
+    driver-class-name: org.postgresql.Driver
+  data:
+    redis:
+      repositories:
+        enabled: false
+      host: ${BMS_REDIS_HOST:localhost}
+      port: ${BMS_REDIS_PORT:6379}
+      password: ${BMS_REDIS_PASSWORD:zhongyan_redis_local}
+      database: ${BMS_REDIS_DATABASE:0}
+      timeout: 2s
+  kafka:
+    bootstrap-servers: ${BMS_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    client-id: ${BMS_KAFKA_CLIENT_ID:zhongyan-uav-local}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+    consumer:
+      group-id: ${BMS_KAFKA_CONSUMER_GROUP:zhongyan-uav-local}
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+  devtools:
+    restart:
+      enabled: true
+    livereload:
+      enabled: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+
+bms:
+  repository:
+    mode: ${BMS_REPOSITORY_MODE:jpa}
+  event:
+    publisher: ${BMS_EVENT_PUBLISHER:kafka}
+    consumer: ${BMS_EVENT_CONSUMER:kafka}
+  device-mode: mock
+  asset:
+    storage:
+      enabled: true
+      endpoint: ${BMS_MINIO_ENDPOINT:http://localhost:9000}
+      access-key: ${BMS_MINIO_ACCESS_KEY:zhongyan}
+      secret-key: ${BMS_MINIO_SECRET_KEY:zhongyan_minio_local}
+      bucket: ${BMS_MINIO_BUCKET:zhongyan-uav-assets}
+      region: ${BMS_MINIO_REGION:us-east-1}
+      presigned-expiry: ${BMS_MINIO_PRESIGNED_EXPIRY:PT15M}
