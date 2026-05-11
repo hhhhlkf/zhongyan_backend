@@ -1,4 +1,4 @@
-﻿package com.zhongyan.uav.common.error;
+package com.zhongyan.uav.common.error;
 
 public enum ErrorCode {
     SUCCESS(200, "success"),

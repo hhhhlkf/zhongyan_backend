@@ -1,4 +1,4 @@
-﻿package com.zhongyan.uav.common.response;
+package com.zhongyan.uav.common.response;
 
 import com.zhongyan.uav.common.error.ErrorCode;
 

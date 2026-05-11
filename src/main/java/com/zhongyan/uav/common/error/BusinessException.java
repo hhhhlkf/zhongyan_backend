@@ -1,4 +1,4 @@
-﻿package com.zhongyan.uav.common.error;
+package com.zhongyan.uav.common.error;
 
 public class BusinessException extends RuntimeException {
     private final int code;

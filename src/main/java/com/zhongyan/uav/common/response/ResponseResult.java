@@ -1,4 +1,4 @@
-﻿package com.zhongyan.uav.common.response;
+package com.zhongyan.uav.common.response;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;

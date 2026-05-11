@@ -1,4 +1,4 @@
-﻿package com.zhongyan.uav.common.config;
+package com.zhongyan.uav.common.config;
 
 import com.zhongyan.uav.common.response.ResponseResultInterceptor;
 import org.springframework.context.annotation.Configuration;

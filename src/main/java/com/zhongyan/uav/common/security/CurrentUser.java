@@ -1,4 +1,4 @@
-﻿package com.zhongyan.uav.common.security;
+package com.zhongyan.uav.common.security;
 
 import java.util.Collections;
 import java.util.Set;
