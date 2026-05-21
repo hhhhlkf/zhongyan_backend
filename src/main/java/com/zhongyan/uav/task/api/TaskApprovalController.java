@@ -4,6 +4,7 @@ import com.zhongyan.uav.common.response.ResponseResult;
 import com.zhongyan.uav.task.api.request.ApproveCommandRequest;
 import com.zhongyan.uav.task.api.response.TaskCommandView;
 import com.zhongyan.uav.task.application.TaskApprovalService;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,6 +18,7 @@ import java.util.stream.Collectors;
 @ResponseResult
 @RestController
 @RequestMapping("/approvals")
+@PreAuthorize("hasAnyAuthority('TASK_APPROVE', 'ROLE_ADMIN')")
 public class TaskApprovalController {
     private final TaskApprovalService taskApprovalService;
 

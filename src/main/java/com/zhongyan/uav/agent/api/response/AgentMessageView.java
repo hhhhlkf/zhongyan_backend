@@ -1,6 +1,9 @@
 package com.zhongyan.uav.agent.api.response;
 
+import com.zhongyan.uav.agent.domain.AgentMessage;
+
 import java.time.Instant;
+import java.util.Map;
 
 public record AgentMessageView(
         String messageId,
@@ -8,11 +11,13 @@ public record AgentMessageView(
         String role,
         String content,
         String status,
+        Map<String, Object> metadata,
         Instant createdAt) {
     /**
-     * 构建 Agent 消息占位视图，避免 API 空壳调用模型服务。
+     * 将会话消息转换为 API 视图，保留元数据便于前端展示工具轨迹和模型状态。
      */
-    public static AgentMessageView placeholder(String messageId, String sessionId, String role, String content) {
-        return new AgentMessageView(messageId, sessionId, role, content, "PLACEHOLDER", Instant.now());
+    public static AgentMessageView fromDomain(AgentMessage message) {
+        return new AgentMessageView(message.messageId(), message.sessionId(), message.role().name(),
+                message.content(), "SAVED", message.metadata(), message.createdAt());
     }
 }

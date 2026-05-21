@@ -5,6 +5,7 @@ import com.zhongyan.uav.task.api.request.CreateTaskCommandRequest;
 import com.zhongyan.uav.task.api.response.TaskCommandView;
 import com.zhongyan.uav.task.application.TaskCommandApplicationService;
 import com.zhongyan.uav.task.application.TaskQueryService;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -35,6 +36,7 @@ public class TaskCommandController {
      * 创建 TaskCommand。
      */
     @PostMapping
+    @PreAuthorize("hasAnyAuthority('WRITE', 'TASK_APPROVE', 'ROLE_ADMIN')")
     public TaskCommandView createCommand(@PathVariable String taskId,
                                          @RequestBody CreateTaskCommandRequest request) {
         return TaskCommandView.from(taskCommandApplicationService.createCommand(taskId, request.toInput()));

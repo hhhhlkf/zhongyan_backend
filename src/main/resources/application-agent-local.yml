@@ -1,0 +1,23 @@
+spring:
+  config:
+    activate:
+      on-profile: agent-local
+
+bms:
+  agent:
+    enabled: true
+    base-url: ${BMS_AGENT_BASE_URL:http://localhost:11434/v1}
+    api-key: ${BMS_AGENT_API_KEY:local-dev-key}
+    chat-model: ${BMS_AGENT_CHAT_MODEL:qwen3:8b}
+    embedding-model: ${BMS_AGENT_EMBEDDING_MODEL:qwen3-embedding:0.6b}
+    max-tool-depth: ${BMS_AGENT_MAX_TOOL_DEPTH:5}
+    stream-enabled: ${BMS_AGENT_STREAM_ENABLED:true}
+    approval-required-for-write: ${BMS_AGENT_APPROVAL_REQUIRED_FOR_WRITE:true}
+    events-topic: ${BMS_AGENT_EVENTS_TOPIC:agent-events}
+    connect-timeout: ${BMS_AGENT_CONNECT_TIMEOUT:PT3S}
+    read-timeout: ${BMS_AGENT_READ_TIMEOUT:PT90S}
+    redis:
+      enabled: ${BMS_AGENT_REDIS_ENABLED:true}
+      tool-rate-limit-per-minute: ${BMS_AGENT_TOOL_RATE_LIMIT_PER_MINUTE:60}
+      rate-limit-window: ${BMS_AGENT_RATE_LIMIT_WINDOW:PT1M}
+      idempotency-ttl: ${BMS_AGENT_IDEMPOTENCY_TTL:PT30M}
