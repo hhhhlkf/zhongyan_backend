@@ -1,0 +1,94 @@
+flowchart LR
+    classDef actor fill:#fff7ed,stroke:#c2410c,color:#111827
+    classDef usecase fill:#eff6ff,stroke:#2563eb,color:#111827
+    classDef module fill:#f8fafc,stroke:#475569,color:#111827
+    classDef external fill:#f0fdf4,stroke:#16a34a,color:#111827
+    classDef risk fill:#fef2f2,stroke:#dc2626,color:#111827
+
+    Operator[业务操作员]:::actor
+    Approver[审批人员]:::actor
+    AgentUser[Agent 使用者]:::actor
+    Scheduler[任务调度器]:::actor
+    Device[真实设备 / 边缘节点]:::external
+    ModelSvc[模型服务]:::external
+    ObjectStore[MinIO / mock storage]:::external
+    GeoServer[GeoServer / mock]:::external
+    EventBus[Kafka / mock event bus]:::external
+    RealtimeClient[前端实时客户端]:::actor
+
+    subgraph Backend["zhongyan-uav-backend (/v2)"]
+        Common[common 安全/响应/异常/配置]:::module
+
+        UC_Mission((创建/查询 Mission)):::usecase
+        UC_Task((创建/调度/查询 Task)):::usecase
+        UC_Command((创建 TaskCommand)):::risk
+        UC_Approval((审批高风险命令)):::risk
+        UC_Execute((执行采集/处理/传输/发布/报告任务)):::risk
+        UC_Config((维护设备/相机/模型/传输配置)):::usecase
+        UC_Asset((登记/查询/删除资产与预览)):::usecase
+        UC_Geo((计算边界/发布图层)):::usecase
+        UC_Telemetry((写入/查询遥测)):::usecase
+        UC_Event((事件发布/回放/死信诊断)):::usecase
+        UC_Realtime((SSE/WebSocket 推送)):::usecase
+        UC_Agent((Agent 会话/问答/工具调用/报告草稿)):::risk
+
+        Mission[mission]:::module
+        Task[task]:::module
+        ConfigCenter[configcenter]:::module
+        DeviceModule[device]:::module
+        Asset[asset]:::module
+        Geo[geo]:::module
+        Telemetry[telemetry]:::module
+        Event[event]:::module
+        Realtime[realtime]:::module
+        Agent[agent]:::module
+    end
+
+    Operator --> UC_Mission
+    Operator --> UC_Task
+    Operator --> UC_Config
+    Operator --> UC_Asset
+    Operator --> UC_Geo
+    Operator --> UC_Telemetry
+    Approver --> UC_Approval
+    AgentUser --> UC_Agent
+    Scheduler --> UC_Execute
+    RealtimeClient --> UC_Realtime
+
+    UC_Mission --> Mission
+    UC_Task --> Task
+    UC_Command --> Task
+    UC_Approval --> Task
+    UC_Execute --> Task
+    UC_Config --> ConfigCenter
+    UC_Asset --> Asset
+    UC_Geo --> Geo
+    UC_Telemetry --> Telemetry
+    UC_Event --> Event
+    UC_Realtime --> Realtime
+    UC_Agent --> Agent
+
+    Common --> Mission
+    Common --> Task
+    Common --> Asset
+    Common --> ConfigCenter
+    Common --> Telemetry
+    Common --> Agent
+
+    Task --> Mission
+    Task --> ConfigCenter
+    Task --> DeviceModule
+    Task --> Asset
+    Task --> Geo
+    Task --> Agent
+    Task --> Event
+
+    DeviceModule --> Device
+    Asset --> ObjectStore
+    Geo --> GeoServer
+    Event --> EventBus
+    Event --> Realtime
+    Realtime --> RealtimeClient
+    Agent --> ModelSvc
+    Agent --> Event
+    Agent --> Realtime
