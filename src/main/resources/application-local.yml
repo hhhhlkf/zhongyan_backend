@@ -48,6 +48,13 @@ bms:
     publisher: ${BMS_EVENT_PUBLISHER:kafka}
     consumer: ${BMS_EVENT_CONSUMER:kafka}
   device-mode: mock
+  device:
+    command:
+      connect-timeout-ms: ${BMS_DEVICE_CONNECT_TIMEOUT_MS:5000}
+      retry-max-attempts: ${BMS_DEVICE_RETRY_MAX_ATTEMPTS:1}
+      retry-backoff-ms: ${BMS_DEVICE_RETRY_BACKOFF_MS:250}
+      circuit-failure-threshold: ${BMS_DEVICE_CIRCUIT_FAILURE_THRESHOLD:3}
+      circuit-open-duration-ms: ${BMS_DEVICE_CIRCUIT_OPEN_DURATION_MS:30000}
   asset:
     storage:
       enabled: true
@@ -57,3 +64,34 @@ bms:
       bucket: ${BMS_MINIO_BUCKET:zhongyan-uav-assets}
       region: ${BMS_MINIO_REGION:us-east-1}
       presigned-expiry: ${BMS_MINIO_PRESIGNED_EXPIRY:PT15M}
+  geo:
+    geoserver:
+      enabled: ${BMS_GEOSERVER_ENABLED:true}
+      url: ${BMS_GEOSERVER_URL:http://localhost:8080/geoserver}
+      username: ${BMS_GEOSERVER_USERNAME:admin}
+      password: ${BMS_GEOSERVER_PASSWORD:geoserver}
+      workspace: ${BMS_GEOSERVER_WORKSPACE:zhongyan}
+      datastore: ${BMS_GEOSERVER_DATASTORE:postgis}
+      postgis-host: ${BMS_GEOSERVER_POSTGIS_HOST:postgres}
+      postgis-port: ${BMS_GEOSERVER_POSTGIS_PORT:5432}
+      postgis-database: ${BMS_GEOSERVER_POSTGIS_DATABASE:zhongyan_uav}
+      postgis-schema: ${BMS_GEOSERVER_POSTGIS_SCHEMA:public}
+      postgis-username: ${BMS_GEOSERVER_POSTGIS_USERNAME:zhongyan}
+      postgis-password: ${BMS_GEOSERVER_POSTGIS_PASSWORD:zhongyan_local}
+      table-name: ${BMS_GEOSERVER_TABLE_NAME:asset_geometry}
+      layer-name: ${BMS_GEOSERVER_LAYER_NAME:asset_geometry}
+      style-name: ${BMS_GEOSERVER_STYLE_NAME:asset-boundary}
+      connect-timeout-ms: ${BMS_GEOSERVER_CONNECT_TIMEOUT_MS:3000}
+      read-timeout-ms: ${BMS_GEOSERVER_READ_TIMEOUT_MS:10000}
+      retry-max-attempts: ${BMS_GEOSERVER_RETRY_MAX_ATTEMPTS:3}
+      retry-backoff-ms: ${BMS_GEOSERVER_RETRY_BACKOFF_MS:500}
+      circuit-failure-threshold: ${BMS_GEOSERVER_CIRCUIT_FAILURE_THRESHOLD:3}
+      circuit-open-duration-ms: ${BMS_GEOSERVER_CIRCUIT_OPEN_DURATION_MS:30000}
+  telemetry:
+    udp:
+      enabled: ${BMS_TELEMETRY_UDP_ENABLED:false}
+      port: ${BMS_TELEMETRY_UDP_PORT:18088}
+      buffer-bytes: ${BMS_TELEMETRY_UDP_BUFFER_BYTES:8192}
+    kafka:
+      enabled: ${BMS_TELEMETRY_KAFKA_ENABLED:false}
+      topic: ${BMS_TELEMETRY_KAFKA_TOPIC:uav-telemetry}

@@ -21,3 +21,25 @@ bms:
   asset:
     storage:
       enabled: false
+  geo:
+    geoserver:
+      enabled: false
+  telemetry:
+    udp:
+      enabled: false
+    kafka:
+      enabled: false
+  agent:
+    enabled: false
+    base-url: http://localhost:11434/v1
+    api-key:
+    chat-model: test-chat
+    embedding-model: test-embedding
+    max-tool-depth: 3
+    stream-enabled: false
+    approval-required-for-write: true
+    events-topic: agent-events
+    connect-timeout: PT1S
+    read-timeout: PT5S
+    redis:
+      enabled: false

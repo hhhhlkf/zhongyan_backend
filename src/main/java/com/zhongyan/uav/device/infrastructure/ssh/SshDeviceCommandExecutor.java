@@ -4,6 +4,7 @@ import com.zhongyan.uav.device.domain.DeviceCommandPayload;
 import com.zhongyan.uav.device.domain.DeviceCommandResult;
 import com.zhongyan.uav.device.infrastructure.DevicePayloads;
 import com.zhongyan.uav.device.port.DeviceCommandExecutor;
+import com.zhongyan.uav.common.resilience.ExternalCallGuard;
 
 import java.io.IOException;
 import java.time.Clock;
@@ -18,13 +19,24 @@ import java.util.concurrent.TimeUnit;
 
 public class SshDeviceCommandExecutor implements DeviceCommandExecutor {
     private final Clock clock;
+    private final int defaultConnectTimeoutMs;
+    private final ExternalCallGuard guard;
 
     public SshDeviceCommandExecutor() {
         this(Clock.systemUTC());
     }
 
     public SshDeviceCommandExecutor(Clock clock) {
+        this(clock, 10000, 1, 250, 3, 30000);
+    }
+
+    public SshDeviceCommandExecutor(Clock clock, int defaultConnectTimeoutMs, int retryMaxAttempts,
+                                    long retryBackoffMs, int circuitFailureThreshold,
+                                    long circuitOpenDurationMs) {
         this.clock = clock;
+        this.defaultConnectTimeoutMs = Math.max(1000, defaultConnectTimeoutMs);
+        this.guard = new ExternalCallGuard("device-ssh", retryMaxAttempts, retryBackoffMs,
+                circuitFailureThreshold, circuitOpenDurationMs);
     }
 
     @Override
@@ -40,7 +52,7 @@ public class SshDeviceCommandExecutor implements DeviceCommandExecutor {
         List<String> commandLine = commandLine(parameters, host, command);
         Process process = null;
         try {
-            process = new ProcessBuilder(commandLine).redirectErrorStream(true).start();
+            process = startProcess(commandLine);
             Process runningProcess = process;
             CompletableFuture<String> outputFuture = CompletableFuture.supplyAsync(() -> readOutput(runningProcess));
             boolean finished = process.waitFor(payload.timeout().toMillis(), TimeUnit.MILLISECONDS);
@@ -60,10 +72,14 @@ public class SshDeviceCommandExecutor implements DeviceCommandExecutor {
                     false, String.valueOf(exitCode), "ssh command failed", output, null, elapsed, metadata,
                     clock.instant());
         } catch (IOException ex) {
-            return failure(payload, "SSH_IO_ERROR", ex.getMessage(), "");
+            return failure(payload, "SSH_IO_ERROR", "SSH command I/O failure: " + ex.getMessage(), "");
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
-            return failure(payload, "SSH_INTERRUPTED", ex.getMessage(), "");
+            return failure(payload, "SSH_INTERRUPTED", "SSH command interrupted: " + ex.getMessage(), "");
+        } catch (SshCommandException ex) {
+            return failure(payload, "SSH_IO_ERROR", "SSH command launch failure: " + ex.getCause().getMessage(), "");
+        } catch (IllegalStateException ex) {
+            return failure(payload, "SSH_CIRCUIT_OPEN", ex.getMessage(), "");
         } finally {
             if (process != null && process.isAlive()) {
                 process.destroyForcibly();
@@ -71,10 +87,24 @@ public class SshDeviceCommandExecutor implements DeviceCommandExecutor {
         }
     }
 
+    private Process startProcess(List<String> commandLine) throws IOException {
+        try {
+            return guard.execute("startProcess", () -> {
+                try {
+                    return new ProcessBuilder(commandLine).redirectErrorStream(true).start();
+                } catch (IOException ex) {
+                    throw new SshCommandException(ex);
+                }
+            });
+        } catch (SshCommandException ex) {
+            throw ex;
+        }
+    }
+
     private List<String> commandLine(Map<String, Object> parameters, String host, String command) {
         String username = DevicePayloads.text(parameters, null, "username", "user");
         int port = DevicePayloads.integer(parameters, 22, "port", "sshPort");
-        int connectTimeoutSeconds = Math.max(1, DevicePayloads.integer(parameters, 10000,
+        int connectTimeoutSeconds = Math.max(1, DevicePayloads.integer(parameters, defaultConnectTimeoutMs,
                 "connect-timeout-ms", "connectTimeoutMs") / 1000);
         String strictHostKeyChecking = DevicePayloads.text(parameters, "accept-new", "strictHostKeyChecking");
         String identityFile = DevicePayloads.text(parameters, null, "identityFile", "privateKeyPath");
@@ -128,6 +158,12 @@ public class SshDeviceCommandExecutor implements DeviceCommandExecutor {
     private DeviceCommandResult failure(DeviceCommandPayload payload, String exitCode,
                                         String message, String rawOutput) {
         return DeviceCommandResult.failure(payload, exitCode, message, rawOutput,
-                Map.of("protocol", "SSH"), clock.instant());
+                Map.of("protocol", "SSH", "failureClass", exitCode), clock.instant());
+    }
+
+    private static class SshCommandException extends RuntimeException {
+        private SshCommandException(Throwable cause) {
+            super(cause);
+        }
     }
 }

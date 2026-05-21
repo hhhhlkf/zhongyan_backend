@@ -136,7 +136,94 @@ services:
         mc anonymous set none "local/$${BMS_MINIO_BUCKET}"
     restart: "no"
 
+  geoserver:
+    image: ${BMS_GEOSERVER_IMAGE:-docker.osgeo.org/geoserver:2.25.2}
+    container_name: zhongyan-uav-geoserver
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      GEOSERVER_ADMIN_USER: ${BMS_GEOSERVER_USERNAME:-admin}
+      GEOSERVER_ADMIN_PASSWORD: ${BMS_GEOSERVER_PASSWORD:-geoserver}
+      SKIP_DEMO_DATA: ${BMS_GEOSERVER_SKIP_DEMO_DATA:-true}
+      PROXY_BASE_URL: ${BMS_GEOSERVER_PUBLIC_URL:-http://localhost:8080/geoserver}
+      TZ: Asia/Shanghai
+    ports:
+      - "${BMS_GEOSERVER_PORT:-8080}:8080"
+    volumes:
+      - geoserver-data:/opt/geoserver_data
+
+  agent-model:
+    image: ${BMS_AGENT_MODEL_IMAGE:-ollama/ollama:latest}
+    container_name: zhongyan-uav-agent-model
+    profiles:
+      - agent
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      TZ: Asia/Shanghai
+    ports:
+      - "${BMS_AGENT_MODEL_PORT:-11434}:11434"
+    volumes:
+      - agent-model-data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  prometheus:
+    image: ${BMS_PROMETHEUS_IMAGE:-prom/prometheus:v2.54.1}
+    container_name: zhongyan-uav-prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    ports:
+      - "${BMS_PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./prometheus/prometheus.local.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  grafana:
+    image: ${BMS_GRAFANA_IMAGE:-grafana/grafana:11.2.0}
+    container_name: zhongyan-uav-grafana
+    restart: unless-stopped
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: ${BMS_GRAFANA_USERNAME:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${BMS_GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      TZ: Asia/Shanghai
+    ports:
+      - "${BMS_GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/api/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
 volumes:
   postgres-data:
   redis-data:
   minio-data:
+  geoserver-data:
+  agent-model-data:
+  prometheus-data:
+  grafana-data:

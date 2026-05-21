@@ -1,6 +1,15 @@
 package com.zhongyan.uav.db;
 
 import com.zhongyan.uav.asset.domain.Asset;
+import com.zhongyan.uav.agent.domain.AgentMessage;
+import com.zhongyan.uav.agent.domain.AgentMessageRole;
+import com.zhongyan.uav.agent.domain.AgentSession;
+import com.zhongyan.uav.agent.domain.AgentToolCall;
+import com.zhongyan.uav.agent.domain.AgentToolCallStatus;
+import com.zhongyan.uav.agent.domain.ToolRiskLevel;
+import com.zhongyan.uav.agent.infrastructure.JpaAgentMessageEntity;
+import com.zhongyan.uav.agent.infrastructure.JpaAgentSessionEntity;
+import com.zhongyan.uav.agent.infrastructure.JpaAgentToolCallEntity;
 import com.zhongyan.uav.asset.domain.AssetRole;
 import com.zhongyan.uav.asset.domain.AssetStatus;
 import com.zhongyan.uav.asset.domain.AssetType;
@@ -40,6 +49,8 @@ import com.zhongyan.uav.task.infrastructure.jpa.JpaTaskAttemptEntity;
 import com.zhongyan.uav.task.infrastructure.jpa.JpaTaskCommandEntity;
 import com.zhongyan.uav.task.infrastructure.jpa.JpaTaskEntity;
 import com.zhongyan.uav.task.infrastructure.jpa.JpaTaskEventEntity;
+import com.zhongyan.uav.telemetry.domain.UavTelemetry;
+import com.zhongyan.uav.telemetry.infrastructure.jpa.JpaUavTelemetryEntity;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -92,6 +103,11 @@ class JpaEntityMappingTests {
         TaskAsset taskAsset = new TaskAsset(task.taskId(), asset.assetId(), AssetRole.OUTPUT, NOW);
         assertThat(JpaTaskAssetEntity.fromDomain(taskAsset).toDomain()).isEqualTo(taskAsset);
 
+        UavTelemetry telemetry = UavTelemetry.record("telemetry-jpa-map", "uav-jpa-map",
+                mission.missionId(), task.taskId(), NOW, 30.1, 104.1, 120.0,
+                90.0, 12.0, Map.of("source", "mapping"));
+        assertThat(JpaUavTelemetryEntity.fromDomain(telemetry).toDomain()).isEqualTo(telemetry);
+
         assertThat(task.progress()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
@@ -121,5 +137,33 @@ class JpaEntityMappingTests {
         ConfigValidation validation = ConfigValidation.failed("validation-jpa-map", "MODEL",
                 model.modelConfigId(), List.of("missing artifact"), NOW);
         assertThat(JpaConfigValidationEntity.fromDomain(validation).toDomain()).isEqualTo(validation);
+    }
+
+    @Test
+    void mapsAgentEntities() {
+        AgentSession session = AgentSession.create("agent-session-jpa-map", "mission-jpa-map",
+                "task-jpa-map", "analyst-1", "mapping session", NOW);
+        AgentSession mappedSession = JpaAgentSessionEntity.fromDomain(session).toDomain();
+        assertThat(mappedSession.sessionId()).isEqualTo(session.sessionId());
+        assertThat(mappedSession.userId()).isEqualTo(session.userId());
+        assertThat(mappedSession.title()).isEqualTo(session.title());
+
+        AgentMessage message = new AgentMessage("agent-message-jpa-map", session.sessionId(),
+                AgentMessageRole.USER, "Summarize mission", Map.of("source", "mapping"), NOW);
+        AgentMessage mappedMessage = JpaAgentMessageEntity.fromDomain(message).toDomain();
+        assertThat(mappedMessage.messageId()).isEqualTo(message.messageId());
+        assertThat(mappedMessage.role()).isEqualTo(message.role());
+        assertThat(mappedMessage.metadata()).containsEntry("source", "mapping");
+
+        AgentToolCall toolCall = AgentToolCall.restore("agent-tool-call-jpa-map", session.sessionId(),
+                message.messageId(), "task.query", Map.of("taskId", "task-jpa-map"),
+                ToolRiskLevel.LOW, false, "agent:" + session.userId(), AgentToolCallStatus.COMPLETED,
+                Map.of("status", "DONE"), null, null, null, NOW, NOW.plusSeconds(2));
+        AgentToolCall mappedToolCall = JpaAgentToolCallEntity.fromDomain(toolCall).toDomain();
+        assertThat(mappedToolCall.toolCallId()).isEqualTo(toolCall.toolCallId());
+        assertThat(mappedToolCall.requestedBy()).isEqualTo("agent:" + session.userId());
+        assertThat(mappedToolCall.input()).containsEntry("taskId", "task-jpa-map");
+        assertThat(mappedToolCall.output()).containsEntry("status", "DONE");
+        assertThat(mappedToolCall.status()).isEqualTo(AgentToolCallStatus.COMPLETED);
     }
 }

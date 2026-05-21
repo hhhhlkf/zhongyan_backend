@@ -1,8 +1,38 @@
 package com.zhongyan.uav.common.config;
 
+import com.zhongyan.uav.agent.application.AgentApplicationService;
+import com.zhongyan.uav.agent.application.RagService;
+import com.zhongyan.uav.agent.application.ReportDraftService;
+import com.zhongyan.uav.agent.application.ToolGatewayService;
+import com.zhongyan.uav.agent.domain.AgentMessageRepository;
+import com.zhongyan.uav.agent.domain.AgentSessionRepository;
+import com.zhongyan.uav.agent.domain.AgentToolCallRepository;
+import com.zhongyan.uav.agent.infrastructure.KafkaAgentEventPublisher;
+import com.zhongyan.uav.agent.infrastructure.PgVectorStoreAdapter;
+import com.zhongyan.uav.agent.infrastructure.SpringAiChatModelAdapter;
+import com.zhongyan.uav.agent.infrastructure.SpringAiEmbeddingAdapter;
 import com.zhongyan.uav.asset.domain.AssetRepository;
 import com.zhongyan.uav.asset.domain.TaskAssetRepository;
+import com.zhongyan.uav.agent.infrastructure.AgentProperties;
+import com.zhongyan.uav.agent.infrastructure.tool.AssetSearchTool;
+import com.zhongyan.uav.agent.infrastructure.tool.AssetStatsTool;
+import com.zhongyan.uav.agent.infrastructure.tool.DiagnosisReadTaskLogTool;
+import com.zhongyan.uav.agent.infrastructure.tool.MissionQueryTool;
+import com.zhongyan.uav.agent.infrastructure.tool.ReportGenerateDraftTool;
+import com.zhongyan.uav.agent.infrastructure.tool.TaskCommandCreateTool;
+import com.zhongyan.uav.agent.infrastructure.tool.TaskCreateTool;
+import com.zhongyan.uav.agent.infrastructure.tool.TaskQueryTool;
+import com.zhongyan.uav.agent.infrastructure.tool.TelemetryQueryTool;
+import com.zhongyan.uav.agent.port.AgentEventPublisher;
+import com.zhongyan.uav.agent.port.AgentRuntimeGuard;
+import com.zhongyan.uav.agent.port.AgentTool;
+import com.zhongyan.uav.agent.port.ChatModelPort;
+import com.zhongyan.uav.agent.port.EmbeddingPort;
+import com.zhongyan.uav.agent.port.VectorStorePort;
+import com.zhongyan.uav.agent.infrastructure.NoopAgentRuntimeGuard;
+import com.zhongyan.uav.agent.infrastructure.RedisAgentRuntimeGuard;
 import com.zhongyan.uav.asset.application.AssetApplicationService;
+import com.zhongyan.uav.asset.application.AssetEventRecorder;
 import com.zhongyan.uav.asset.application.AssetQueryService;
 import com.zhongyan.uav.asset.application.PreviewApplicationService;
 import com.zhongyan.uav.asset.port.AssetStoragePort;
@@ -39,7 +69,9 @@ import com.zhongyan.uav.mission.application.MissionApplicationService;
 import com.zhongyan.uav.mission.application.MissionQueryService;
 import com.zhongyan.uav.mission.domain.MissionRepository;
 import com.zhongyan.uav.realtime.application.RealtimePushService;
+import com.zhongyan.uav.realtime.infrastructure.CompositeRealtimePushService;
 import com.zhongyan.uav.realtime.infrastructure.SseRealtimePushService;
+import com.zhongyan.uav.realtime.infrastructure.WebSocketRealtimePushService;
 import com.zhongyan.uav.task.application.TaskApplicationService;
 import com.zhongyan.uav.task.application.TaskApprovalService;
 import com.zhongyan.uav.task.application.TaskCommandApplicationService;
@@ -59,14 +91,33 @@ import com.zhongyan.uav.task.executor.PublishLayerTaskExecutor;
 import com.zhongyan.uav.task.executor.ReportGenerationTaskExecutor;
 import com.zhongyan.uav.task.executor.TaskExecutor;
 import com.zhongyan.uav.task.executor.TransferTaskExecutor;
+import com.zhongyan.uav.telemetry.application.UavTelemetryIngestService;
+import com.zhongyan.uav.telemetry.application.UavTelemetryQueryService;
+import com.zhongyan.uav.telemetry.domain.UavTelemetryRepository;
+import com.zhongyan.uav.telemetry.infrastructure.TelemetryProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openai.client.OpenAIClient;
+import com.openai.client.okhttp.OpenAIOkHttpClient;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.ai.document.MetadataMode;
+import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.OpenAiEmbeddingModel;
+import org.springframework.ai.openai.OpenAiEmbeddingOptions;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.Clock;
 import java.util.List;
 
 @Configuration
+@EnableConfigurationProperties({TelemetryProperties.class, AgentProperties.class})
 public class ApplicationServiceConfig {
     @Bean
     public MissionApplicationService missionApplicationService(MissionRepository missionRepository) {
@@ -118,8 +169,9 @@ public class ApplicationServiceConfig {
 
     @Bean
     public AssetApplicationService assetApplicationService(AssetRepository assetRepository,
-                                                           TaskAssetRepository taskAssetRepository) {
-        return new AssetApplicationService(assetRepository, taskAssetRepository);
+                                                           TaskAssetRepository taskAssetRepository,
+                                                           AssetEventRecorder assetEventRecorder) {
+        return new AssetApplicationService(assetRepository, taskAssetRepository, assetEventRecorder);
     }
 
     @Bean
@@ -148,19 +200,21 @@ public class ApplicationServiceConfig {
 
     @Bean
     public GeoBoundaryApplicationService geoBoundaryApplicationService(AssetRepository assetRepository,
-                                                                       GroundElevationPort groundElevationPort) {
-        return new GeoBoundaryApplicationService(assetRepository, groundElevationPort);
+                                                                       GroundElevationPort groundElevationPort,
+                                                                       AssetEventRecorder assetEventRecorder) {
+        return new GeoBoundaryApplicationService(assetRepository, groundElevationPort, assetEventRecorder);
     }
 
     @Bean
     public LayerPublishApplicationService layerPublishApplicationService(AssetRepository assetRepository,
-                                                                         GeoServerPort geoServerPort) {
-        return new LayerPublishApplicationService(assetRepository, geoServerPort);
+                                                                         GeoServerPort geoServerPort,
+                                                                         AssetEventRecorder assetEventRecorder) {
+        return new LayerPublishApplicationService(assetRepository, geoServerPort, assetEventRecorder);
     }
 
     @Bean
-    public RealtimePushService realtimePushService() {
-        return new SseRealtimePushService();
+    public RealtimePushService realtimePushService(WebSocketRealtimePushService webSocketRealtimePushService) {
+        return new CompositeRealtimePushService(new SseRealtimePushService(), webSocketRealtimePushService);
     }
 
     @Bean
@@ -175,6 +229,12 @@ public class ApplicationServiceConfig {
                                                      DeadLetterEventService deadLetterEventService) {
         return new OutboxPublishService(outboxRepository, eventPublisher, realtimePushService,
                 deadLetterEventService, Clock.systemUTC(), 3);
+    }
+
+    @Bean
+    public AssetEventRecorder assetEventRecorder(OutboxPublishService outboxPublishService,
+                                                 TaskEventRepository taskEventRepository) {
+        return new AssetEventRecorder(outboxPublishService, taskEventRepository);
     }
 
     @Bean
@@ -239,14 +299,17 @@ public class ApplicationServiceConfig {
 
     @Bean
     public AgentAnalysisTaskExecutor agentAnalysisTaskExecutor(AssetRepository assetRepository,
-                                                               TaskAssetRepository taskAssetRepository) {
-        return new AgentAnalysisTaskExecutor(assetRepository, taskAssetRepository);
+                                                               TaskAssetRepository taskAssetRepository,
+                                                               AgentApplicationService agentApplicationService) {
+        return new AgentAnalysisTaskExecutor(assetRepository, taskAssetRepository,
+                agentApplicationService, Clock.systemUTC());
     }
 
     @Bean
     public ReportGenerationTaskExecutor reportGenerationTaskExecutor(AssetRepository assetRepository,
-                                                                     TaskAssetRepository taskAssetRepository) {
-        return new ReportGenerationTaskExecutor(assetRepository, taskAssetRepository);
+                                                                     TaskAssetRepository taskAssetRepository,
+                                                                     AssetStoragePort assetStoragePort) {
+        return new ReportGenerationTaskExecutor(assetRepository, taskAssetRepository, assetStoragePort);
     }
 
     @Bean
@@ -287,5 +350,191 @@ public class ApplicationServiceConfig {
                                                            ConfigValidationRepository configValidationRepository) {
         return new ConfigValidationService(deviceConfigRepository, cameraConfigRepository,
                 modelConfigRepository, transferConfigRepository, configValidationRepository);
+    }
+
+    @Bean
+    public UavTelemetryIngestService uavTelemetryIngestService(UavTelemetryRepository telemetryRepository,
+                                                               OutboxPublishService outboxPublishService) {
+        return new UavTelemetryIngestService(telemetryRepository, outboxPublishService);
+    }
+
+    @Bean
+    public UavTelemetryQueryService uavTelemetryQueryService(UavTelemetryRepository telemetryRepository) {
+        return new UavTelemetryQueryService(telemetryRepository);
+    }
+
+    @Bean
+    public AgentApplicationService agentApplicationService(AgentSessionRepository agentSessionRepository,
+                                                           AgentMessageRepository agentMessageRepository,
+                                                           ChatModelPort chatModelPort,
+                                                           ToolGatewayService toolGatewayService,
+                                                           RagService ragService,
+                                                           ReportDraftService reportDraftService,
+                                                           AgentEventPublisher agentEventPublisher,
+                                                           MissionRepository missionRepository,
+                                                           TaskRepository taskRepository,
+                                                           TaskEventRepository taskEventRepository,
+                                                           AssetRepository assetRepository,
+                                                           UavTelemetryRepository uavTelemetryRepository) {
+        return new AgentApplicationService(agentSessionRepository, agentMessageRepository,
+                chatModelPort, toolGatewayService, ragService, reportDraftService,
+                agentEventPublisher, Clock.systemUTC(), missionRepository, taskRepository,
+                taskEventRepository, assetRepository, uavTelemetryRepository);
+    }
+
+    @Bean
+    public ToolGatewayService toolGatewayService(List<AgentTool> agentTools,
+                                                 AgentToolCallRepository agentToolCallRepository,
+                                                 AgentEventPublisher agentEventPublisher,
+                                                 AgentRuntimeGuard agentRuntimeGuard) {
+        return new ToolGatewayService(agentTools, agentToolCallRepository,
+                agentEventPublisher, agentRuntimeGuard, Clock.systemUTC());
+    }
+
+    @Bean
+    public RagService ragService(EmbeddingPort embeddingPort, VectorStorePort vectorStorePort) {
+        return new RagService(embeddingPort, vectorStorePort);
+    }
+
+    @Bean
+    public ReportDraftService reportDraftService() {
+        return new ReportDraftService();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(ChatModelPort.class)
+    public ChatModelPort chatModelPort(AgentProperties agentProperties,
+                                       ObjectMapper objectMapper,
+                                       ObjectProvider<org.springframework.ai.chat.model.ChatModel> chatModelProvider,
+                                       List<AgentTool> agentTools) {
+        return new SpringAiChatModelAdapter(agentProperties, objectMapper,
+                chatModelProvider.getIfAvailable(), agentTools);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(EmbeddingPort.class)
+    public EmbeddingPort embeddingPort(AgentProperties agentProperties,
+                                       ObjectProvider<EmbeddingModel> embeddingModelProvider) {
+        return new SpringAiEmbeddingAdapter(agentProperties, embeddingModelProvider.getIfAvailable());
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "bms.agent", name = "enabled", havingValue = "true")
+    @ConditionalOnMissingBean(OpenAIClient.class)
+    public OpenAIClient agentOpenAiClient(AgentProperties agentProperties) {
+        return OpenAIOkHttpClient.builder()
+                .baseUrl(agentProperties.normalizedBaseUrl())
+                .apiKey(defaultText(agentProperties.apiKey(), "unused"))
+                .timeout(agentProperties.readTimeout())
+                .maxRetries(0)
+                .build();
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "bms.agent", name = "enabled", havingValue = "true")
+    @ConditionalOnMissingBean(org.springframework.ai.chat.model.ChatModel.class)
+    public org.springframework.ai.chat.model.ChatModel springAiChatModel(OpenAIClient openAIClient,
+                                                                        AgentProperties agentProperties) {
+        OpenAiChatOptions options = OpenAiChatOptions.builder()
+                .model(agentProperties.chatModel())
+                .timeout(agentProperties.readTimeout())
+                .build();
+        return OpenAiChatModel.builder()
+                .openAiClient(openAIClient)
+                .options(options)
+                .build();
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "bms.agent", name = "enabled", havingValue = "true")
+    @ConditionalOnMissingBean(EmbeddingModel.class)
+    public EmbeddingModel springAiEmbeddingModel(OpenAIClient openAIClient,
+                                                 AgentProperties agentProperties) {
+        OpenAiEmbeddingOptions options = OpenAiEmbeddingOptions.builder()
+                .model(agentProperties.embeddingModel())
+                .timeout(agentProperties.readTimeout())
+                .build();
+        return new OpenAiEmbeddingModel(openAIClient, MetadataMode.EMBED, options);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(VectorStorePort.class)
+    public VectorStorePort vectorStorePort(ObjectProvider<JdbcTemplate> jdbcTemplateProvider,
+                                           ObjectMapper objectMapper) {
+        return new PgVectorStoreAdapter(jdbcTemplateProvider.getIfAvailable(), objectMapper);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(AgentRuntimeGuard.class)
+    public AgentRuntimeGuard agentRuntimeGuard(ObjectProvider<StringRedisTemplate> redisTemplateProvider,
+                                               AgentProperties agentProperties) {
+        StringRedisTemplate redisTemplate = redisTemplateProvider.getIfAvailable();
+        if (redisTemplate != null && agentProperties.redis().enabled()) {
+            return new RedisAgentRuntimeGuard(redisTemplate, agentProperties);
+        }
+        return new NoopAgentRuntimeGuard();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(AgentEventPublisher.class)
+    public AgentEventPublisher agentEventPublisher(EventPublisher eventPublisher,
+                                                   RealtimePushService realtimePushService) {
+        return new KafkaAgentEventPublisher(eventPublisher, realtimePushService);
+    }
+
+    @Bean
+    public AgentTool missionQueryTool(MissionRepository missionRepository) {
+        return new MissionQueryTool(missionRepository);
+    }
+
+    @Bean
+    public AgentTool taskQueryTool(TaskRepository taskRepository,
+                                   TaskEventRepository taskEventRepository,
+                                   TaskAttemptRepository taskAttemptRepository,
+                                   TaskCommandRepository taskCommandRepository) {
+        return new TaskQueryTool(taskRepository, taskEventRepository,
+                taskAttemptRepository, taskCommandRepository);
+    }
+
+    @Bean
+    public AgentTool taskCreateTool(TaskApplicationService taskApplicationService) {
+        return new TaskCreateTool(taskApplicationService);
+    }
+
+    @Bean
+    public AgentTool taskCommandCreateTool(TaskCommandApplicationService taskCommandApplicationService) {
+        return new TaskCommandCreateTool(taskCommandApplicationService);
+    }
+
+    @Bean
+    public AgentTool assetSearchTool(AssetRepository assetRepository) {
+        return new AssetSearchTool(assetRepository);
+    }
+
+    @Bean
+    public AgentTool assetStatsTool(AssetRepository assetRepository) {
+        return new AssetStatsTool(assetRepository);
+    }
+
+    @Bean
+    public AgentTool telemetryQueryTool(UavTelemetryQueryService uavTelemetryQueryService) {
+        return new TelemetryQueryTool(uavTelemetryQueryService);
+    }
+
+    @Bean
+    public AgentTool diagnosisReadTaskLogTool(TaskAttemptRepository taskAttemptRepository,
+                                              TaskEventRepository taskEventRepository) {
+        return new DiagnosisReadTaskLogTool(taskAttemptRepository, taskEventRepository);
+    }
+
+    @Bean
+    public AgentTool reportGenerateDraftTool(ReportDraftService reportDraftService,
+                                             RagService ragService,
+                                             TaskApplicationService taskApplicationService) {
+        return new ReportGenerateDraftTool(reportDraftService, ragService, taskApplicationService);
+    }
+
+    private static String defaultText(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
     }
 }

@@ -3,6 +3,20 @@ server:
   servlet:
     context-path: /v2
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  metrics:
+    tags:
+      application: zhongyan-uav-backend
+
 spring:
   autoconfigure:
     exclude:
@@ -218,8 +232,41 @@ udp-data:
   trim-interval-ms: 60000
 
 bms:
+  security:
+    jwt:
+      issuer: zhongyan-uav
+      secret: ${BMS_JWT_SECRET:jwt-token-secret}
+      expiration-seconds: ${BMS_JWT_EXPIRATION_SECONDS:28800}
+    rate-limit:
+      enabled: ${BMS_API_RATE_LIMIT_ENABLED:true}
+      window-seconds: ${BMS_API_RATE_LIMIT_WINDOW_SECONDS:60}
+      max-requests: ${BMS_API_RATE_LIMIT_MAX_REQUESTS:120}
   device:
     mode: mock
+    command:
+      connect-timeout-ms: ${BMS_DEVICE_CONNECT_TIMEOUT_MS:5000}
+      retry-max-attempts: ${BMS_DEVICE_RETRY_MAX_ATTEMPTS:1}
+      retry-backoff-ms: ${BMS_DEVICE_RETRY_BACKOFF_MS:250}
+      circuit-failure-threshold: ${BMS_DEVICE_CIRCUIT_FAILURE_THRESHOLD:3}
+      circuit-open-duration-ms: ${BMS_DEVICE_CIRCUIT_OPEN_DURATION_MS:30000}
   repository:
     mode: mock
-
+  geo:
+    geoserver:
+      enabled: false
+      connect-timeout-ms: ${BMS_GEOSERVER_CONNECT_TIMEOUT_MS:3000}
+      read-timeout-ms: ${BMS_GEOSERVER_READ_TIMEOUT_MS:10000}
+      retry-max-attempts: ${BMS_GEOSERVER_RETRY_MAX_ATTEMPTS:3}
+      retry-backoff-ms: ${BMS_GEOSERVER_RETRY_BACKOFF_MS:500}
+      circuit-failure-threshold: ${BMS_GEOSERVER_CIRCUIT_FAILURE_THRESHOLD:3}
+      circuit-open-duration-ms: ${BMS_GEOSERVER_CIRCUIT_OPEN_DURATION_MS:30000}
+  telemetry:
+    udp:
+      enabled: false
+      port: 18088
+      buffer-bytes: 8192
+    kafka:
+      enabled: false
+      topic: uav-telemetry
+  agent:
+    enabled: false

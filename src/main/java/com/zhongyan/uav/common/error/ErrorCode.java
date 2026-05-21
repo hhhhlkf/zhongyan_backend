@@ -7,6 +7,7 @@ public enum ErrorCode {
     FORBIDDEN(403, "forbidden"),
     NOT_FOUND(404, "not found"),
     CONFLICT(409, "conflict"),
+    TOO_MANY_REQUESTS(429, "too many requests"),
     INTERNAL_ERROR(500, "internal server error");
 
     private final int code;

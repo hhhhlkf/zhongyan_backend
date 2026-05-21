@@ -7,6 +7,7 @@ import com.zhongyan.uav.asset.domain.Asset;
 import com.zhongyan.uav.asset.domain.AssetRole;
 import com.zhongyan.uav.asset.domain.AssetType;
 import com.zhongyan.uav.asset.infrastructure.mock.InMemoryAssetRepository;
+import com.zhongyan.uav.asset.infrastructure.mock.InMemoryAssetStorage;
 import com.zhongyan.uav.asset.infrastructure.mock.InMemoryTaskAssetRepository;
 import com.zhongyan.uav.device.infrastructure.mock.MockCameraAdapter;
 import com.zhongyan.uav.device.infrastructure.mock.MockDeviceCommandExecutor;
@@ -264,7 +265,8 @@ class TaskSchedulerServiceTests {
                     new PublishLayerTaskExecutor(assetRepository, taskAssetRepository, clock),
                     new DemoPlaybackTaskExecutor(assetRepository, taskAssetRepository, clock),
                     new AgentAnalysisTaskExecutor(assetRepository, taskAssetRepository, clock),
-                    new ReportGenerationTaskExecutor(assetRepository, taskAssetRepository, clock))
+                    new ReportGenerationTaskExecutor(assetRepository, taskAssetRepository,
+                            new InMemoryAssetStorage(), clock))
                     : overrideExecutors;
             schedulerService = new TaskSchedulerService(taskRepository, attemptRepository,
                     commandRepository, eventRepository, commandApplicationService, taskApplicationService,

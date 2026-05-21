@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -29,7 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
-@WithMockUser(username = "api-tester")
+@WithMockUser(username = "api-tester", authorities = {"WRITE", "TASK_APPROVE"})
 class ApiControllerFlowTests {
     private MockMvc mockMvc;
 
@@ -75,7 +76,7 @@ class ApiControllerFlowTests {
         mockMvc.perform(get("/v2/approvals/pending").contextPath("/v2"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data[0].commandId").value(commandId));
+                .andExpect(jsonPath("$.data[*].commandId", hasItem(commandId)));
 
         mockMvc.perform(post("/v2/approvals/{commandId}/approve", commandId)
                         .contextPath("/v2")

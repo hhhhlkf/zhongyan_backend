@@ -1,5 +1,11 @@
 package com.zhongyan.uav.common.config;
 
+import com.zhongyan.uav.agent.domain.AgentMessageRepository;
+import com.zhongyan.uav.agent.domain.AgentSessionRepository;
+import com.zhongyan.uav.agent.domain.AgentToolCallRepository;
+import com.zhongyan.uav.agent.infrastructure.mock.InMemoryAgentMessageRepository;
+import com.zhongyan.uav.agent.infrastructure.mock.InMemoryAgentSessionRepository;
+import com.zhongyan.uav.agent.infrastructure.mock.InMemoryAgentToolCallRepository;
 import com.zhongyan.uav.asset.domain.AssetRepository;
 import com.zhongyan.uav.asset.domain.TaskAssetRepository;
 import com.zhongyan.uav.asset.infrastructure.mock.InMemoryAssetRepository;
@@ -28,6 +34,8 @@ import com.zhongyan.uav.task.infrastructure.mock.InMemoryTaskAttemptRepository;
 import com.zhongyan.uav.task.infrastructure.mock.InMemoryTaskCommandRepository;
 import com.zhongyan.uav.task.infrastructure.mock.InMemoryTaskEventRepository;
 import com.zhongyan.uav.task.infrastructure.mock.InMemoryTaskRepository;
+import com.zhongyan.uav.telemetry.domain.UavTelemetryRepository;
+import com.zhongyan.uav.telemetry.infrastructure.mock.InMemoryUavTelemetryRepository;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -103,5 +111,25 @@ public class MockApplicationConfig {
     @Bean
     public OutboxRepository outboxRepository() {
         return new InMemoryOutboxRepository();
+    }
+
+    @Bean
+    public UavTelemetryRepository uavTelemetryRepository() {
+        return new InMemoryUavTelemetryRepository();
+    }
+
+    @Bean
+    public AgentSessionRepository agentSessionRepository() {
+        return new InMemoryAgentSessionRepository();
+    }
+
+    @Bean
+    public AgentMessageRepository agentMessageRepository() {
+        return new InMemoryAgentMessageRepository();
+    }
+
+    @Bean
+    public AgentToolCallRepository agentToolCallRepository() {
+        return new InMemoryAgentToolCallRepository();
     }
 }

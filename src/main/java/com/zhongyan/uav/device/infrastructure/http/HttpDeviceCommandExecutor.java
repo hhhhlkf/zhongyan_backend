@@ -6,6 +6,7 @@ import com.zhongyan.uav.device.domain.DeviceCommandPayload;
 import com.zhongyan.uav.device.domain.DeviceCommandResult;
 import com.zhongyan.uav.device.infrastructure.DevicePayloads;
 import com.zhongyan.uav.device.port.DeviceCommandExecutor;
+import com.zhongyan.uav.common.resilience.ExternalCallGuard;
 
 import java.io.IOException;
 import java.net.URI;
@@ -22,15 +23,24 @@ public class HttpDeviceCommandExecutor implements DeviceCommandExecutor {
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final ExternalCallGuard guard;
 
     public HttpDeviceCommandExecutor() {
         this(HttpClient.newHttpClient(), new ObjectMapper(), Clock.systemUTC());
     }
 
     public HttpDeviceCommandExecutor(HttpClient httpClient, ObjectMapper objectMapper, Clock clock) {
+        this(httpClient, objectMapper, clock, 1, 250, 3, 30000);
+    }
+
+    public HttpDeviceCommandExecutor(HttpClient httpClient, ObjectMapper objectMapper, Clock clock,
+                                     int retryMaxAttempts, long retryBackoffMs,
+                                     int circuitFailureThreshold, long circuitOpenDurationMs) {
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.guard = new ExternalCallGuard("device-http", retryMaxAttempts, retryBackoffMs,
+                circuitFailureThreshold, circuitOpenDurationMs);
     }
 
     @Override
@@ -44,7 +54,7 @@ public class HttpDeviceCommandExecutor implements DeviceCommandExecutor {
         Instant startedAt = clock.instant();
         try {
             HttpRequest request = request(payload, url);
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = guard.execute("send", () -> send(request));
             Duration elapsed = Duration.between(startedAt, clock.instant());
             Map<String, Object> metadata = metadata(response, elapsed);
             boolean success = response.statusCode() >= 200 && response.statusCode() < 300;
@@ -53,12 +63,29 @@ public class HttpDeviceCommandExecutor implements DeviceCommandExecutor {
                     success ? "http command executed" : "http command failed",
                     response.body(), null, elapsed, metadata, clock.instant());
         } catch (IOException ex) {
-            return DeviceCommandResult.failure(payload, "HTTP_IO_ERROR", ex.getMessage(),
-                    "", Map.of("protocol", "HTTP"), clock.instant());
+            return failure(payload, "HTTP_IO_ERROR", "HTTP command I/O failure: " + ex.getMessage());
+        } catch (HttpCommandException ex) {
+            Throwable cause = ex.getCause();
+            if (cause instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+                return failure(payload, "HTTP_INTERRUPTED", "HTTP command interrupted: " + cause.getMessage());
+            }
+            return failure(payload, "HTTP_IO_ERROR", "HTTP command I/O failure: " + cause.getMessage());
+        } catch (IllegalArgumentException ex) {
+            return failure(payload, "HTTP_BAD_REQUEST", "HTTP command request is invalid: " + ex.getMessage());
+        } catch (IllegalStateException ex) {
+            return failure(payload, "HTTP_CIRCUIT_OPEN", ex.getMessage());
+        }
+    }
+
+    private HttpResponse<String> send(HttpRequest request) {
+        try {
+            return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        } catch (IOException ex) {
+            throw new HttpCommandException(ex);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
-            return DeviceCommandResult.failure(payload, "HTTP_INTERRUPTED", ex.getMessage(),
-                    "", Map.of("protocol", "HTTP"), clock.instant());
+            throw new HttpCommandException(ex);
         }
     }
 
@@ -100,5 +127,16 @@ public class HttpDeviceCommandExecutor implements DeviceCommandExecutor {
         metadata.put("statusCode", response.statusCode());
         metadata.put("elapsedMs", elapsed.toMillis());
         return metadata;
+    }
+
+    private DeviceCommandResult failure(DeviceCommandPayload payload, String exitCode, String message) {
+        return DeviceCommandResult.failure(payload, exitCode, message,
+                "", Map.of("protocol", "HTTP", "failureClass", exitCode), clock.instant());
+    }
+
+    private static class HttpCommandException extends RuntimeException {
+        private HttpCommandException(Throwable cause) {
+            super(cause);
+        }
     }
 }

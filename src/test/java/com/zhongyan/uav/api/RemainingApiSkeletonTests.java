@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
+import java.util.List;
 import java.util.Map;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -31,7 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
-@WithMockUser(username = "skeleton-tester")
+@WithMockUser(username = "skeleton-tester", authorities = {"WRITE", "TASK_APPROVE", "AGENT_CHAT", "AGENT_TOOL_APPROVE"})
 class RemainingApiSkeletonTests {
     private MockMvc mockMvc;
 
@@ -204,24 +205,31 @@ class RemainingApiSkeletonTests {
         mockMvc.perform(post("/v2/uavs/uav-1/telemetry")
                         .contextPath("/v2")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("latitude", 30.1, "longitude", 104.1, "altitudeMeters", 120.0))))
+                        .content(json(Map.of("missionId", "mission-telemetry-api",
+                                "latitude", 30.1,
+                                "longitude", 104.1,
+                                "altitudeMeters", 120.0,
+                                "reportedAt", "2026-04-29T00:10:00Z"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.uavId").value("uav-1"))
-                .andExpect(jsonPath("$.data.status").value("PLACEHOLDER"));
+                .andExpect(jsonPath("$.data.missionId").value("mission-telemetry-api"))
+                .andExpect(jsonPath("$.data.status").value("RECORDED"));
 
         mockMvc.perform(get("/v2/uavs/uav-1/telemetry/latest").contextPath("/v2"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.uavId").value("uav-1"));
+                .andExpect(jsonPath("$.data.uavId").value("uav-1"))
+                .andExpect(jsonPath("$.data.latitude").value(30.1));
         mockMvc.perform(get("/v2/uavs/uav-1/telemetry")
                         .contextPath("/v2")
                         .param("from", "2026-04-29T00:00:00Z")
                         .param("to", "2026-04-29T01:00:00Z"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1));
         mockMvc.perform(get("/v2/uavs/uav-1/track")
                         .contextPath("/v2")
-                        .param("missionId", "mission-1"))
+                        .param("missionId", "mission-telemetry-api"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.points.length()").value(0));
+                .andExpect(jsonPath("$.data.points.length()").value(1));
     }
 
     @Test
@@ -247,39 +255,133 @@ class RemainingApiSkeletonTests {
     @Test
     void exposesAgentApiSkeletons() throws Exception {
         mockMvc.perform(post("/v2/agent/sessions")
+                .contextPath("/v2")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json(Map.of("missionId", "mission-1", "taskId", "task-1", "title", "Agent API"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(400))
+            .andExpect(jsonPath("$.message").value("createdBy must not be blank"));
+
+        String sessionResponse = mockMvc.perform(post("/v2/agent/sessions")
                         .contextPath("/v2")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("missionId", "mission-1", "taskId", "task-1"))))
+                        .content(json(Map.of("missionId", "mission-1", "taskId", "task-1",
+                                "createdBy", "api-tester", "title", "Agent API"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.missionId").value("mission-1"))
-                .andExpect(jsonPath("$.data.status").value("PLACEHOLDER"));
+                .andExpect(jsonPath("$.data.status").value("ACTIVE"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String sessionId = readText(sessionResponse, "sessionId");
 
-        mockMvc.perform(get("/v2/agent/sessions/session-1").contextPath("/v2"))
+        mockMvc.perform(get("/v2/agent/sessions/{sessionId}", sessionId).contextPath("/v2"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.sessionId").value("session-1"));
-        mockMvc.perform(post("/v2/agent/sessions/session-1/messages")
+                .andExpect(jsonPath("$.data.sessionId").value(sessionId));
+        mockMvc.perform(post("/v2/agent/sessions/{sessionId}/messages", sessionId)
                         .contextPath("/v2")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("role", "USER", "content", "summary"))))
+                        .content(json(Map.of("role", "USER", "content", "summary",
+                                "createdBy", "api-tester"))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.sessionId").value("session-1"));
-        mockMvc.perform(get("/v2/agent/sessions/session-1/events").contextPath("/v2"))
-                .andExpect(status().isOk());
-        mockMvc.perform(get("/v2/agent/tool-calls/tool-call-1").contextPath("/v2"))
+                .andExpect(jsonPath("$.data.userMessage.sessionId").value(sessionId))
+                .andExpect(jsonPath("$.data.assistantMessage.role").value("ASSISTANT"));
+        mockMvc.perform(get("/v2/agent/sessions/{sessionId}/messages", sessionId).contextPath("/v2"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.toolCallId").value("tool-call-1"));
-        mockMvc.perform(post("/v2/agent/tool-calls/tool-call-1/approve")
+                .andExpect(jsonPath("$.data.length()").value(2));
+        mockMvc.perform(get("/v2/agent/sessions/{sessionId}/events", sessionId).contextPath("/v2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2));
+        String missionResponse = mockMvc.perform(post("/v2/missions")
+                        .contextPath("/v2")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("name", "Agent Tool Mission", "scenarioType", "TEST",
+                                "priority", 1, "createdBy", "api-tester"))))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String missionId = readText(missionResponse, "missionId");
+        String taskResponse = mockMvc.perform(post("/v2/missions/{missionId}/tasks", missionId)
+                        .contextPath("/v2")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("taskType", "CAPTURE", "priority", 1,
+                                "deviceId", "device-agent-tool", "createdBy", "api-tester"))))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String taskId = readText(taskResponse, "taskId");
+        String lowRiskResponse = mockMvc.perform(post("/v2/agent/tool-calls")
+                        .contextPath("/v2")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("sessionId", sessionId, "messageId", "message-1",
+                                "userId", "user-1", "toolName", "task.query",
+                                "input", Map.of("taskId", taskId),
+                                "permissions", List.of("AGENT_CHAT")))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String lowRiskToolCallId = readText(lowRiskResponse, "toolCallId");
+        mockMvc.perform(get("/v2/agent/tool-calls/{toolCallId}", lowRiskToolCallId).contextPath("/v2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.toolCallId").value(lowRiskToolCallId));
+
+        String highRiskResponse = mockMvc.perform(post("/v2/agent/tool-calls")
+                        .contextPath("/v2")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("sessionId", sessionId, "messageId", "message-1",
+                                "userId", "user-1", "toolName", "taskCommand.create",
+                                "input", Map.of("taskId", taskId, "commandType", "START_CAPTURE",
+                                        "reason", "operator requested"),
+                                "permissions", List.of("AGENT_TOOL_APPROVE")))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("WAITING_APPROVAL"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String highRiskToolCallId = readText(highRiskResponse, "toolCallId");
+        mockMvc.perform(post("/v2/agent/tool-calls/{toolCallId}/approve", highRiskToolCallId)
                         .contextPath("/v2")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("reviewer", "admin-1"))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("APPROVED"));
-        mockMvc.perform(post("/v2/agent/tool-calls/tool-call-1/reject")
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+
+        String rejectedResponse = mockMvc.perform(post("/v2/agent/tool-calls")
                         .contextPath("/v2")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("reviewer", "admin-1"))))
+                        .content(json(Map.of("sessionId", sessionId, "messageId", "message-1",
+                                "userId", "user-1", "toolName", "taskCommand.create",
+                                "input", Map.of("taskId", taskId, "commandType", "STOP_CAPTURE",
+                                        "reason", "operator requested"),
+                                "permissions", List.of("AGENT_TOOL_APPROVE")))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("WAITING_APPROVAL"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String rejectedToolCallId = readText(rejectedResponse, "toolCallId");
+        mockMvc.perform(post("/v2/agent/tool-calls/{toolCallId}/reject", rejectedToolCallId)
+                        .contextPath("/v2")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("reviewer", "admin-1", "reason", "risk too high"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("REJECTED"));
+    }
+
+    @Test
+    @WithMockUser(username = "viewer-without-agent-authority")
+    void rejectsAgentApiWithoutAgentPermission() throws Exception {
+        mockMvc.perform(post("/v2/agent/sessions")
+                        .contextPath("/v2")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("missionId", "mission-1", "taskId", "task-1",
+                                "createdBy", "api-tester", "title", "Agent API"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(403));
     }
 
     private String createDevice() throws Exception {

@@ -105,6 +105,29 @@ class RealDeviceAdapterTests {
         }
     }
 
+    @Test
+    void httpExecutorClassifiesOfflineDeviceAndOpensCircuit() {
+        DeviceCommandPayload payload = new DeviceCommandPayload("command-1", "task-1", "device-1",
+                com.zhongyan.uav.task.domain.TaskCommandType.START_CAPTURE, DeviceProtocol.HTTP,
+                Map.of("url", "http://127.0.0.1:9/device-command", "body", Map.of("action", "start")),
+                null);
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(java.time.Duration.ofMillis(200))
+                .build();
+        HttpDeviceCommandExecutor executor = new HttpDeviceCommandExecutor(client,
+                new ObjectMapper(), clock, 2, 1, 1, 30_000);
+
+        DeviceCommandResult first = executor.execute(payload);
+        DeviceCommandResult second = executor.execute(payload);
+
+        assertThat(first.success()).isFalse();
+        assertThat(first.exitCode()).isEqualTo("HTTP_IO_ERROR");
+        assertThat(first.metadata()).containsEntry("failureClass", "HTTP_IO_ERROR");
+        assertThat(second.success()).isFalse();
+        assertThat(second.exitCode()).isEqualTo("HTTP_CIRCUIT_OPEN");
+        assertThat(second.metadata()).containsEntry("failureClass", "HTTP_CIRCUIT_OPEN");
+    }
+
     private static class CapturingExecutor implements DeviceCommandExecutor {
         private final Clock clock;
         private DeviceCommandPayload lastPayload;

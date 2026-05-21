@@ -1,6 +1,15 @@
 package com.zhongyan.uav.db;
 
 import com.zhongyan.uav.ZhongyanUavApplication;
+import com.zhongyan.uav.agent.domain.AgentMessage;
+import com.zhongyan.uav.agent.domain.AgentMessageRepository;
+import com.zhongyan.uav.agent.domain.AgentMessageRole;
+import com.zhongyan.uav.agent.domain.AgentSession;
+import com.zhongyan.uav.agent.domain.AgentSessionRepository;
+import com.zhongyan.uav.agent.domain.AgentToolCall;
+import com.zhongyan.uav.agent.domain.AgentToolCallRepository;
+import com.zhongyan.uav.agent.domain.AgentToolCallStatus;
+import com.zhongyan.uav.agent.domain.ToolRiskLevel;
 import com.zhongyan.uav.asset.domain.Asset;
 import com.zhongyan.uav.asset.domain.AssetRepository;
 import com.zhongyan.uav.asset.domain.AssetRole;
@@ -36,6 +45,8 @@ import com.zhongyan.uav.task.domain.TaskEventRepository;
 import com.zhongyan.uav.task.domain.TaskEventType;
 import com.zhongyan.uav.task.domain.TaskRepository;
 import com.zhongyan.uav.task.domain.TaskType;
+import com.zhongyan.uav.telemetry.domain.UavTelemetry;
+import com.zhongyan.uav.telemetry.domain.UavTelemetryRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -92,6 +103,18 @@ class JpaRepositoryAdapterLocalPostgresTests {
     @Autowired
     private ConfigValidationRepository configValidationRepository;
 
+    @Autowired
+    private UavTelemetryRepository uavTelemetryRepository;
+
+    @Autowired
+    private AgentSessionRepository agentSessionRepository;
+
+    @Autowired
+    private AgentMessageRepository agentMessageRepository;
+
+    @Autowired
+    private AgentToolCallRepository agentToolCallRepository;
+
     @Test
     void jpaAdaptersPersistAndQueryMainChain() {
         String suffix = UUID.randomUUID().toString();
@@ -145,6 +168,41 @@ class JpaRepositoryAdapterLocalPostgresTests {
                 AssetRole.OUTPUT, now));
         assertThat(taskAssetRepository.findByTaskId(task.taskId())).extracting(TaskAsset::assetId)
                 .containsExactly(taskAsset.assetId());
+
+        UavTelemetry telemetry = uavTelemetryRepository.save(UavTelemetry.record("telemetry-" + suffix,
+                "uav-" + suffix, mission.missionId(), task.taskId(), now.plusSeconds(2),
+                30.1, 104.1, 120.0, 90.0, 12.0, Map.of("source", "adapter-test")));
+        assertThat(uavTelemetryRepository.findLatestByUavId(telemetry.uavId())).isPresent()
+                .get()
+                .extracting(UavTelemetry::telemetryId)
+                .isEqualTo(telemetry.telemetryId());
+        assertThat(uavTelemetryRepository.findTrack(telemetry.uavId(), mission.missionId(), 10))
+                .extracting(UavTelemetry::telemetryId)
+                .containsExactly(telemetry.telemetryId());
+
+        AgentSession agentSession = agentSessionRepository.save(AgentSession.create(
+                "agent-session-" + suffix, mission.missionId(), task.taskId(), "analyst-" + suffix,
+                "adapter agent session", now));
+        assertThat(agentSessionRepository.findById(agentSession.sessionId())).isPresent()
+                .get()
+                .extracting(AgentSession::sessionId, AgentSession::userId)
+                .containsExactly(agentSession.sessionId(), agentSession.userId());
+
+        AgentMessage agentMessage = agentMessageRepository.save(new AgentMessage(
+                "agent-message-" + suffix, agentSession.sessionId(), AgentMessageRole.USER,
+                "Summarize this task", Map.of("source", "adapter-test"), now.plusSeconds(3)));
+        assertThat(agentMessageRepository.findBySessionId(agentSession.sessionId()))
+                .extracting(AgentMessage::messageId)
+                .containsExactly(agentMessage.messageId());
+
+        AgentToolCall toolCall = agentToolCallRepository.save(AgentToolCall.restore(
+                "agent-tool-call-" + suffix, agentSession.sessionId(), agentMessage.messageId(),
+                "task.query", Map.of("taskId", task.taskId()), ToolRiskLevel.LOW,
+                false, AgentToolCallStatus.COMPLETED, Map.of("taskStatus", task.status().name()),
+                null, null, null, now.plusSeconds(4), now.plusSeconds(5)));
+        assertThat(agentToolCallRepository.findBySessionId(agentSession.sessionId()))
+                .extracting(AgentToolCall::toolCallId)
+                .containsExactly(toolCall.toolCallId());
     }
 
     @Test

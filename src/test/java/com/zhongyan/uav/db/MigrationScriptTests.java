@@ -33,7 +33,9 @@ class MigrationScriptTests {
                         "V2__core_mission_task_asset.sql",
                         "V3__config_center.sql",
                         "V4__telemetry_event_outbox_agent.sql",
-                        "V5__document_table_comments.sql");
+                        "V5__document_table_comments.sql",
+                        "V6__asset_geometry_layer_publish.sql",
+                        "V7__agent_schema_completion.sql");
 
         for (int index = 0; index < migrations.size(); index++) {
             Matcher matcher = MIGRATION_NAME.matcher(migrations.get(index).getFileName().toString());
@@ -53,6 +55,8 @@ class MigrationScriptTests {
         assertThat(allSql).contains("create table task_command");
         assertThat(allSql).contains("create table task_event");
         assertThat(allSql).contains("create table asset");
+        assertThat(allSql).contains("asset_geometry");
+        assertThat(allSql).contains("geometry(polygon, 4326)");
         assertThat(allSql).contains("create table device_config");
         assertThat(allSql).contains("create table camera_config");
         assertThat(allSql).contains("create table model_config");
@@ -61,9 +65,14 @@ class MigrationScriptTests {
         assertThat(allSql).contains("create table uav_telemetry");
         assertThat(allSql).contains("create table event_outbox");
         assertThat(allSql).contains("create table agent_session");
+        assertThat(allSql).contains("user_id varchar(128)");
+        assertThat(allSql).contains("approval_required boolean");
+        assertThat(allSql).contains("create table if not exists agent_knowledge_document");
+        assertThat(allSql).contains("embedding vector(1024)");
         assertThat(allSql).contains("comment on table mission");
         assertThat(allSql).contains("comment on table device_config");
         assertThat(allSql).contains("comment on table agent_tool_call");
+        assertThat(allSql).contains("comment on table agent_knowledge_document");
     }
 
     @Test
