@@ -19,18 +19,33 @@ import java.util.UUID;
 public class AssetApplicationService {
     private final AssetRepository assetRepository;
     private final TaskAssetRepository taskAssetRepository;
+    private final AssetEventRecorder assetEventRecorder;
     private final Clock clock;
 
     public AssetApplicationService(AssetRepository assetRepository,
                                    TaskAssetRepository taskAssetRepository) {
-        this(assetRepository, taskAssetRepository, Clock.systemUTC());
+        this(assetRepository, taskAssetRepository, AssetEventRecorder.noop(), Clock.systemUTC());
+    }
+
+    public AssetApplicationService(AssetRepository assetRepository,
+                                   TaskAssetRepository taskAssetRepository,
+                                   AssetEventRecorder assetEventRecorder) {
+        this(assetRepository, taskAssetRepository, assetEventRecorder, Clock.systemUTC());
     }
 
     public AssetApplicationService(AssetRepository assetRepository,
                                    TaskAssetRepository taskAssetRepository,
                                    Clock clock) {
+        this(assetRepository, taskAssetRepository, AssetEventRecorder.noop(), clock);
+    }
+
+    public AssetApplicationService(AssetRepository assetRepository,
+                                   TaskAssetRepository taskAssetRepository,
+                                   AssetEventRecorder assetEventRecorder,
+                                   Clock clock) {
         this.assetRepository = Objects.requireNonNull(assetRepository, "assetRepository must not be null");
         this.taskAssetRepository = Objects.requireNonNull(taskAssetRepository, "taskAssetRepository must not be null");
+        this.assetEventRecorder = Objects.requireNonNull(assetEventRecorder, "assetEventRecorder must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
     }
 
@@ -54,6 +69,7 @@ public class AssetApplicationService {
         if (saved.taskId() != null && !saved.taskId().isBlank()) {
             taskAssetRepository.save(new TaskAsset(saved.taskId(), saved.assetId(), saved.assetRole(), now));
         }
+        assetEventRecorder.recordAssetCreated(saved);
         return saved;
     }
 

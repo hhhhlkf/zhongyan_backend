@@ -2,6 +2,7 @@ package com.zhongyan.uav.geo.application;
 
 import com.zhongyan.uav.asset.domain.Asset;
 import com.zhongyan.uav.asset.domain.AssetRepository;
+import com.zhongyan.uav.asset.application.AssetEventRecorder;
 import com.zhongyan.uav.common.error.BusinessException;
 import com.zhongyan.uav.common.error.ErrorCode;
 import com.zhongyan.uav.geo.domain.GeoBoundary;
@@ -18,18 +19,33 @@ public class GeoBoundaryApplicationService {
 
     private final AssetRepository assetRepository;
     private final GroundElevationPort groundElevationPort;
+    private final AssetEventRecorder assetEventRecorder;
     private final Clock clock;
 
     public GeoBoundaryApplicationService(AssetRepository assetRepository,
                                          GroundElevationPort groundElevationPort) {
-        this(assetRepository, groundElevationPort, Clock.systemUTC());
+        this(assetRepository, groundElevationPort, AssetEventRecorder.noop(), Clock.systemUTC());
+    }
+
+    public GeoBoundaryApplicationService(AssetRepository assetRepository,
+                                         GroundElevationPort groundElevationPort,
+                                         AssetEventRecorder assetEventRecorder) {
+        this(assetRepository, groundElevationPort, assetEventRecorder, Clock.systemUTC());
     }
 
     public GeoBoundaryApplicationService(AssetRepository assetRepository,
                                          GroundElevationPort groundElevationPort,
                                          Clock clock) {
+        this(assetRepository, groundElevationPort, AssetEventRecorder.noop(), clock);
+    }
+
+    public GeoBoundaryApplicationService(AssetRepository assetRepository,
+                                         GroundElevationPort groundElevationPort,
+                                         AssetEventRecorder assetEventRecorder,
+                                         Clock clock) {
         this.assetRepository = Objects.requireNonNull(assetRepository, "assetRepository must not be null");
         this.groundElevationPort = Objects.requireNonNull(groundElevationPort, "groundElevationPort must not be null");
+        this.assetEventRecorder = Objects.requireNonNull(assetEventRecorder, "assetEventRecorder must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
     }
 
@@ -42,11 +58,15 @@ public class GeoBoundaryApplicationService {
             metadata.put("geometry", boundary.toGeoJson());
             metadata.put("geoCalculatedAt", clock.instant().toString());
             metadata.put("geoSource", "application-service");
-            return assetRepository.save(asset.withMetadata(metadata, clock.instant()).markGeoCalculated(clock.instant()));
+            Asset saved = assetRepository.save(asset.withMetadata(metadata, clock.instant()).markGeoCalculated(clock.instant()));
+            assetEventRecorder.recordGeoCalculated(saved);
+            return saved;
         } catch (RuntimeException exception) {
             Map<String, Object> metadata = new LinkedHashMap<>(asset.metadata());
             metadata.put("geoError", exception.getMessage());
-            return assetRepository.save(asset.withMetadata(metadata, clock.instant()).markGeoFailed(clock.instant()));
+            Asset saved = assetRepository.save(asset.withMetadata(metadata, clock.instant()).markGeoFailed(clock.instant()));
+            assetEventRecorder.recordGeoFailed(saved, exception.getMessage());
+            return saved;
         }
     }
 
