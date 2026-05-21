@@ -8,6 +8,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+/**
+ * 实时推送 REST 入口。
+ * <p>
+ * 当前实现提供 SSE 订阅端点，前端通过这些端点接收任务、遥测和 Agent 会话事件；
+ * 控制器只负责订阅路由映射，实际连接管理和事件分发由 {@link RealtimePushService} 完成。
+ */
 @RestController
 @RequestMapping("/realtime")
 public class RealtimeController {

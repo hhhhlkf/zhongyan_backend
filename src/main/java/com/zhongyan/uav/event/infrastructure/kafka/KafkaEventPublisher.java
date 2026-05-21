@@ -8,6 +8,12 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
+/**
+ * Kafka 事件发布适配器。
+ * <p>
+ * 当 {@code bms.event.publisher=kafka} 时启用，把统一事件序列化为 JSON，
+ * 并按事件信封中的 topic 和 messageKey 写入 Kafka。
+ */
 @Component
 @ConditionalOnProperty(prefix = "bms.event", name = "publisher", havingValue = "kafka")
 public class KafkaEventPublisher implements EventPublisher {

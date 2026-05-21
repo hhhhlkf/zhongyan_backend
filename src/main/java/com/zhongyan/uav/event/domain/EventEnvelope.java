@@ -4,6 +4,12 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
 
+/**
+ * 统一事件信封。
+ * <p>
+ * 所有任务、资产、遥测和 Agent 事件在进入 Kafka、outbox 或实时推送前都会包装为该模型，
+ * 以保证主题、消息键、载荷、头信息和发布状态有一致的审计结构。
+ */
 public record EventEnvelope(
         String eventId,
         String aggregateType,

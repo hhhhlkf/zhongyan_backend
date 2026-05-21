@@ -10,6 +10,12 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+/**
+ * 基于 Spring MVC {@link SseEmitter} 的实时推送实现。
+ * <p>
+ * 该类维护当前 JVM 内的在线订阅者，按 {@code topic:key} 分组投递事件。
+ * 它不承担历史回放职责，历史回放由事件模块读取 outbox 后再次调用 {@link #push(EventEnvelope)}。
+ */
 public class SseRealtimePushService implements RealtimePushService {
     private static final long DEFAULT_TIMEOUT_MS = 30 * 60 * 1000L;
     private final Map<String, List<SseEmitter>> emitters = new ConcurrentHashMap<>();
@@ -41,7 +47,7 @@ public class SseRealtimePushService implements RealtimePushService {
             try {
                 emitter.send(SseEmitter.event()
                         .id(event.eventId())
-                        .name(event.eventType().name())
+                        .name(sseEventName(event))
                         .data(event));
             } catch (IOException ex) {
                 remove(subscriptionKey, emitter);
@@ -58,5 +64,13 @@ public class SseRealtimePushService implements RealtimePushService {
 
     private String subscriptionKey(String topic, String key) {
         return topic + ":" + key;
+    }
+
+    private String sseEventName(EventEnvelope event) {
+        Object configured = event.headers().get("sseEventName");
+        if (configured instanceof String name && !name.isBlank()) {
+            return name;
+        }
+        return event.eventType().name();
     }
 }

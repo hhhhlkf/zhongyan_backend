@@ -1,5 +1,10 @@
 package com.zhongyan.uav.event.domain;
 
+/**
+ * 系统级事件类型和对应 Kafka topic。
+ * <p>
+ * 枚举值表示业务语义，{@link #topic()} 返回该类事件默认进入的消息主题。
+ */
 public enum EventType {
     TASK_EVENT("task-events"),
     DEVICE_COMMAND("device-commands"),

@@ -1,9 +1,10 @@
-package com.zhongyan.uav.telemetry.api.request;
+package com.zhongyan.uav.telemetry.application;
 
 import java.time.Instant;
 import java.util.Map;
 
-public record IngestTelemetryRequest(
+public record IngestTelemetryCommand(
+        String uavId,
         String missionId,
         String taskId,
         Double latitude,

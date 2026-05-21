@@ -1,10 +1,14 @@
 package com.zhongyan.uav.telemetry.api.response;
 
+import com.zhongyan.uav.telemetry.domain.UavTelemetry;
+
 import java.time.Instant;
 
 public record UavTelemetryView(
         String telemetryId,
         String uavId,
+        String missionId,
+        String taskId,
         Double latitude,
         Double longitude,
         Double altitudeMeters,
@@ -12,12 +16,10 @@ public record UavTelemetryView(
         Double headingDegrees,
         String status,
         Instant reportedAt) {
-    /**
-     * 构建遥测占位视图，避免 API 空壳接入真实遥测存储。
-     */
-    public static UavTelemetryView placeholder(String telemetryId, String uavId,
-                                               Double latitude, Double longitude, Double altitudeMeters) {
-        return new UavTelemetryView(telemetryId, uavId, latitude, longitude, altitudeMeters,
-                null, null, "PLACEHOLDER", Instant.now());
+    public static UavTelemetryView fromDomain(UavTelemetry telemetry) {
+        return new UavTelemetryView(telemetry.telemetryId(), telemetry.uavId(), telemetry.missionId(),
+                telemetry.taskId(), telemetry.latitude(), telemetry.longitude(), telemetry.altitudeMeters(),
+                telemetry.speedMetersPerSecond(), telemetry.headingDegrees(), "RECORDED",
+                telemetry.recordedAt());
     }
 }

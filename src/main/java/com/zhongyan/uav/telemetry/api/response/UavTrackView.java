@@ -1,15 +1,17 @@
 package com.zhongyan.uav.telemetry.api.response;
 
+import com.zhongyan.uav.telemetry.domain.UavTelemetry;
+
 import java.util.List;
+import java.util.stream.Collectors;
 
 public record UavTrackView(
         String uavId,
         String missionId,
         List<UavTelemetryView> points) {
-    /**
-     * 构建空轨迹视图，表示当前 API 空壳不读取历史遥测。
-     */
-    public static UavTrackView empty(String uavId, String missionId) {
-        return new UavTrackView(uavId, missionId, List.of());
+    public static UavTrackView fromTelemetry(String uavId, String missionId, List<UavTelemetry> telemetry) {
+        return new UavTrackView(uavId, missionId, telemetry.stream()
+                .map(UavTelemetryView::fromDomain)
+                .collect(Collectors.toList()));
     }
 }

@@ -14,6 +14,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Kafka 事件消费者。
+ * <p>
+ * 该消费者订阅系统事件主题，负责反序列化、按 eventId 去重，并把事件转交给实时推送服务。
+ * 反序列化或推送失败时会记录死信事件，避免消费线程吞掉诊断信息。
+ */
 @Component
 @ConditionalOnProperty(prefix = "bms.event", name = "consumer", havingValue = "kafka")
 public class KafkaEventConsumer implements EventSubscriber {
@@ -34,7 +40,6 @@ public class KafkaEventConsumer implements EventSubscriber {
             "task-events",
             "device-commands",
             "asset-events",
-            "uav-telemetry",
             "agent-events",
             "dead-letter-events"
     }, groupId = "${spring.kafka.consumer.group-id:zhongyan-uav-local}")
